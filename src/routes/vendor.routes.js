@@ -7,6 +7,7 @@ const {
   vendorStep1Schema,
   vendorStep2Schema,
   vendorStep3Schema,
+  productSearchSchema,
 } = require('../validators/vendor.validator');
 
 const router = express.Router();
@@ -41,5 +42,8 @@ router.put(
   ]),
   vendorController.updateProfile
 );
+
+// NEW ROUTE: Search products with filters
+router.get('/products/search', vendorController.searchProducts);
 
 module.exports = router;

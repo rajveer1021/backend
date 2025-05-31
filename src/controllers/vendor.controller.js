@@ -27,6 +27,32 @@ class VendorController {
     const result = await vendorService.updateProfile(req.user.id, req.body, req.files);
     res.status(200).json(new ApiResponse(200, result, 'Profile updated successfully'));
   });
+
+  // NEW METHOD: Search products with filters
+  searchProducts = asyncHandler(async (req, res) => {
+    const { 
+      page = 1, 
+      limit = 10, 
+      search, 
+      category, 
+      sortBy = 'createdAt', 
+      sortOrder = 'desc' 
+    } = req.query;
+    
+    const result = await vendorService.searchProducts(
+      req.user.vendor.id,
+      {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        search,
+        category,
+        sortBy,
+        sortOrder
+      }
+    );
+    
+    res.status(200).json(new ApiResponse(200, result, 'Products search completed successfully'));
+  });
 }
 
 module.exports = new VendorController();

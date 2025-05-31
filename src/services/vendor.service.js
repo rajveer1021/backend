@@ -84,6 +84,122 @@ class VendorService {
     return { vendor, completion: checkProfileCompletion(vendor) };
   }
 
+  async searchProducts(vendorId, filters) {
+  const { page, limit, search, category, sortBy, sortOrder } = filters;
+  const skip = (page - 1) * limit;
+
+  // Build where clause
+  const where = {
+    vendorId,
+    isActive: true, // Only show active products
+  };
+
+  // Add search filter
+  if (search) {
+    where.OR = [
+      {
+        name: {
+          contains: search,
+          mode: 'insensitive',
+        },
+      },
+      {
+        description: {
+          contains: search,
+          mode: 'insensitive',
+        },
+      },
+    ];
+  }
+
+  // Add category filter
+  if (category) {
+    where.category = {
+      equals: category,
+      mode: 'insensitive',
+    };
+  }
+
+  // Build orderBy clause
+  let orderBy = {};
+  
+  switch (sortBy) {
+    case 'name':
+      orderBy.name = sortOrder.toLowerCase();
+      break;
+    case 'createdAt':
+      orderBy.createdAt = sortOrder.toLowerCase();
+      break;
+    case 'price':
+      orderBy.price = sortOrder.toLowerCase();
+      break;
+    case 'stock':
+      orderBy.stock = sortOrder.toLowerCase();
+      break;
+    default:
+      orderBy.createdAt = 'desc';
+  }
+
+  try {
+    const [products, total, categories] = await Promise.all([
+      // Get filtered products
+      prisma.product.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy,
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          price: true,
+          category: true,
+          images: true,
+          stock: true,
+          isActive: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      }),
+      
+      // Get total count for pagination
+      prisma.product.count({ where }),
+      
+      // Get available categories for this vendor
+      prisma.product.findMany({
+        where: { vendorId, isActive: true },
+        select: { category: true },
+        distinct: ['category'],
+        orderBy: { category: 'asc' },
+      }),
+    ]);
+
+    // Extract unique categories
+    const availableCategories = categories.map(item => item.category);
+
+    return {
+      products,
+      availableCategories,
+      filters: {
+        search: search || null,
+        category: category || null,
+        sortBy,
+        sortOrder,
+      },
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+        hasNext: page < Math.ceil(total / limit),
+        hasPrev: page > 1,
+      },
+    };
+  } catch (error) {
+    throw new ApiError(500, 'Error searching products');
+  }
+}
+
   async updateProfile(userId, data, files) {
     const updateData = { ...data };
 
