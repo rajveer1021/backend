@@ -7,9 +7,17 @@ const { createProductSchema, updateProductSchema } = require('../validators/prod
 
 const router = express.Router();
 
-// Protect all routes
+// PUBLIC ROUTES FIRST (before authentication middleware)
+// Get single product - this should be accessible to everyone
+router.get('/:id', productController.getProduct);
+
+// PROTECTED VENDOR ROUTES
 router.use(protect, isVendor);
 
+// Search route MUST come before parameterized routes
+router.get('/search', productController.searchProducts);
+
+// Base product routes
 router
   .route('/')
   .post(
@@ -19,6 +27,7 @@ router
   )
   .get(productController.getVendorProducts);
 
+// Parameterized routes come last
 router
   .route('/:id')
   .put(

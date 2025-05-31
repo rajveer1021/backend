@@ -130,6 +130,53 @@ class AuthService {
     return { message: 'Password changed successfully' };
   }
 
+  // FIXED: Update user profile method
+  async updateProfile(userId, profileData) {
+    const { firstName, lastName, email } = profileData;
+
+    // Check if user exists
+    const existingUser = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!existingUser) {
+      throw new ApiError(404, 'User not found');
+    }
+
+    // If email is being updated, check if new email already exists
+    if (email && email !== existingUser.email) {
+      const emailExists = await prisma.user.findUnique({
+        where: { email },
+      });
+
+      if (emailExists) {
+        throw new ApiError(400, 'Email already exists');
+      }
+    }
+
+    // Prepare update data (only include fields that are provided)
+    const updateData = {};
+    
+    if (firstName !== undefined) updateData.firstName = firstName;
+    if (lastName !== undefined) updateData.lastName = lastName;
+    if (email !== undefined) updateData.email = email;
+
+    // Update user profile
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: updateData,
+      include: { vendor: true },
+    });
+
+    // Return updated user data without password
+    const { password, ...userWithoutPassword } = updatedUser;
+    
+    return {
+      user: userWithoutPassword,
+      message: 'Profile updated successfully'
+    };
+  }
+
   generateToken(user) {
     const token = jwt.sign(
       { id: user.id, email: user.email, accountType: user.accountType },
