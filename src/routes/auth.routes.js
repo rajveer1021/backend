@@ -7,6 +7,7 @@ const {
   loginSchema,
   changePasswordSchema,
   googleAuthSchema,
+  updateProfileSchema,
 } = require('../validators/auth.validator');
 
 const router = express.Router();
@@ -16,5 +17,8 @@ router.post('/login', validate(loginSchema), authController.login);
 router.post('/google', validate(googleAuthSchema), authController.googleAuth);
 router.post('/change-password', protect, validate(changePasswordSchema), authController.changePassword);
 router.get('/profile', protect, authController.getProfile);
+
+// NEW ROUTE: Update user profile
+router.put('/profile', protect, validate(updateProfileSchema), authController.updateProfile);
 
 module.exports = router;

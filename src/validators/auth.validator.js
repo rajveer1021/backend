@@ -23,9 +23,22 @@ const googleAuthSchema = z.object({
   accountType: z.enum(['BUYER', 'VENDOR']).optional(),
 });
 
+// NEW SCHEMA: Profile update validation
+const updateProfileSchema = z.object({
+  firstName: z.string().min(2).max(50).optional(),
+  lastName: z.string().min(2).max(50).optional(),
+  email: z.string().email().optional(),
+}).refine((data) => {
+  // At least one field must be provided
+  return Object.keys(data).length > 0;
+}, {
+  message: "At least one field (firstName, lastName, or email) must be provided",
+});
+
 module.exports = {
   signupSchema,
   loginSchema,
   changePasswordSchema,
   googleAuthSchema,
+  updateProfileSchema,
 };

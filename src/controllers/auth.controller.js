@@ -30,6 +30,12 @@ class AuthController {
     const { password, ...user } = req.user;
     res.status(200).json(new ApiResponse(200, { user }, 'Profile fetched successfully'));
   });
+
+  // NEW METHOD: Update user profile
+  updateProfile = asyncHandler(async (req, res) => {
+    const result = await authService.updateProfile(req.user.id, req.body);
+    res.status(200).json(new ApiResponse(200, result, 'Profile updated successfully'));
+  });
 }
 
 module.exports = new AuthController();
