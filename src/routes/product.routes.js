@@ -1,3 +1,6 @@
+// CRITICAL: Update your backend routes to fix the ordering issue
+
+// In src/routes/product.routes.js
 const express = require('express');
 const productController = require('../controllers/product.controller');
 const { protect, isVendor } = require('../middleware/auth.middleware');
@@ -7,34 +10,31 @@ const { createProductSchema, updateProductSchema } = require('../validators/prod
 
 const router = express.Router();
 
-// PUBLIC ROUTES FIRST (before authentication middleware)
-// Get single product - this should be accessible to everyone
-router.get('/:id', productController.getProduct);
+// PUBLIC ROUTES FIRST (no authentication required)
+router.get('/public/:id', productController.getProduct); // Public product view
 
-// PROTECTED VENDOR ROUTES
+// PROTECTED ROUTES (require authentication)
 router.use(protect, isVendor);
 
-// Search route MUST come before parameterized routes
+// SEARCH ROUTE MUST COME FIRST - before any parameterized routes
 router.get('/search', productController.searchProducts);
 
-// Base product routes
-router
-  .route('/')
-  .post(
-    upload.array('images', 5),
-    validate(createProductSchema),
-    productController.createProduct
-  )
-  .get(productController.getVendorProducts);
+// Basic CRUD routes
+router.post('/', 
+  upload.array('images', 5),
+  validate(createProductSchema),
+  productController.createProduct
+);
 
-// Parameterized routes come last
-router
-  .route('/:id')
-  .put(
-    upload.array('images', 5),
-    validate(updateProductSchema),
-    productController.updateProduct
-  )
-  .delete(productController.deleteProduct);
+router.get('/', productController.getVendorProducts);
+
+// Parameterized routes MUST come last to avoid conflicts
+router.get('/:id', productController.getProduct);
+router.put('/:id', 
+  upload.array('images', 5),
+  validate(updateProductSchema),
+  productController.updateProduct
+);
+router.delete('/:id', productController.deleteProduct);
 
 module.exports = router;
