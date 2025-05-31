@@ -1,0 +1,106 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AccountType {
+  BUYER
+  VENDOR
+  ADMIN
+}
+
+enum VendorType {
+  MANUFACTURER
+  WHOLESALER
+  RETAILER
+}
+
+enum InquiryStatus {
+  OPEN
+  RESPONDED
+  CLOSED
+}
+
+model User {
+  id              String      @id @default(cuid())
+  firstName       String      @map("first_name")
+  lastName        String      @map("last_name")
+  email           String      @unique
+  password        String?
+  accountType     AccountType @map("account_type")
+  googleId        String?     @map("google_id")
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+  
+  vendor          Vendor?
+  inquiries       Inquiry[]
+  
+  @@map("users")
+}
+
+model Vendor {
+  id                  String      @id @default(cuid())
+  userId              String      @unique @map("user_id")
+  vendorType          VendorType? @map("vendor_type")
+  businessName        String?     @map("business_name")
+  businessAddress1    String?     @map("business_address_1")
+  businessAddress2    String?     @map("business_address_2")
+  city                String?
+  state               String?
+  postalCode          String?     @map("postal_code")
+  businessLogo        String?     @map("business_logo")
+  gstNumber           String?     @map("gst_number")
+  gstDocument         String?     @map("gst_document")
+  otherDocuments      String[]    @map("other_documents")
+  verified            Boolean     @default(false)
+  profileStep         Int         @default(1) @map("profile_step")
+  createdAt           DateTime    @default(now()) @map("created_at")
+  updatedAt           DateTime    @updatedAt @map("updated_at")
+  
+  user                User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  products            Product[]
+  
+  @@map("vendors")
+}
+
+model Product {
+  id              String      @id @default(cuid())
+  vendorId        String      @map("vendor_id")
+  name            String
+  description     String
+  price           Float
+  category        String
+  images          String[]
+  stock           Int
+  isActive        Boolean     @default(true) @map("is_active")
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+  
+  vendor          Vendor      @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  inquiries       Inquiry[]
+  
+  @@map("products")
+}
+
+model Inquiry {
+  id              String          @id @default(cuid())
+  productId       String          @map("product_id")
+  buyerId         String          @map("buyer_id")
+  message         String
+  status          InquiryStatus   @default(OPEN)
+  vendorResponse  String?         @map("vendor_response")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+  
+  product         Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  buyer           User            @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  
+  @@map("inquiries")
+}
