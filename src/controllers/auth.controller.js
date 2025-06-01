@@ -1,4 +1,4 @@
-// src/controllers/auth.controller.js - Fixed version
+// src/controllers/auth.controller.js - Complete file with bypass
 const authService = require("../services/auth.service");
 const asyncHandler = require("../utils/asyncHandler");
 const ApiResponse = require("../utils/ApiResponse");
@@ -17,7 +17,7 @@ class AuthController {
     res.status(200).json(new ApiResponse(200, result, "Login successful"));
   });
 
-  // FIXED: Google Auth with better error handling and credential processing
+  // BYPASS: Google Auth - always use VENDOR account type
   googleAuth = asyncHandler(async (req, res) => {
     console.log("🔍 Google Auth Request Body:", req.body);
 
@@ -31,16 +31,40 @@ class AuthController {
     }
 
     try {
-      const result = await authService.googleAuth(credential, accountType);
+      // BYPASS: Force VENDOR account type regardless of what's sent
+      const forcedAccountType = 'VENDOR';
+      console.log(`🔧 Google Auth Bypass: Using forced account type: ${forcedAccountType}`);
 
-      // Check if account type selection is needed
+      const result = await authService.googleAuth(credential, forcedAccountType);
+
+      // BYPASS: Skip account type selection entirely
       if (result.needsAccountTypeSelection) {
-        return res.status(200).json({
-          success: true,
-          needsAccountTypeSelection: true,
-          userInfo: result.userInfo,
-          message: result.message,
-        });
+        console.log("🔧 Bypassing account type selection - creating VENDOR account directly");
+        
+        // Extract user info and create account directly with VENDOR type
+        const { userInfo } = result;
+        
+        try {
+          const directResult = await authService.setGoogleUserAccountType(
+            userInfo.email,
+            userInfo.googleId,
+            'VENDOR',
+            {
+              firstName: userInfo.firstName || userInfo.name?.split(' ')[0] || 'User',
+              lastName: userInfo.lastName || userInfo.name?.split(' ').slice(1).join(' ') || '',
+              name: userInfo.name,
+              picture: userInfo.picture
+            }
+          );
+
+          return res.status(200).json(new ApiResponse(200, directResult, "Google authentication successful - VENDOR account created"));
+        } catch (setAccountError) {
+          console.error("🚨 Failed to set account type in bypass:", setAccountError);
+          return res.status(500).json({
+            success: false,
+            message: "Failed to create account. Please try again.",
+          });
+        }
       }
 
       // Normal successful authentication
@@ -70,7 +94,7 @@ class AuthController {
     }
   });
 
-  // NEW METHOD: Set account type for Google users
+  // Keep this method for potential future use, but it should rarely be called with the bypass
   setGoogleUserAccountType = asyncHandler(async (req, res) => {
     console.log("🔧 Set Google User Account Type Request:", req.body);
 
@@ -84,27 +108,30 @@ class AuthController {
     }
 
     try {
-      // Update user info if provided
+      // BYPASS: Force VENDOR for bypass even if different account type is requested
+      const forcedAccountType = 'VENDOR';
+      console.log(`🔧 Set Account Type Bypass: Using forced account type: ${forcedAccountType}`);
+
       const updatedUserInfo = userInfo
         ? {
             firstName: userInfo.firstName || "User",
             lastName: userInfo.lastName || "",
             email,
             googleId,
-            accountType: accountType.toUpperCase(),
+            accountType: forcedAccountType,
           }
         : null;
 
       const result = await authService.setGoogleUserAccountType(
         email,
         googleId,
-        accountType,
+        forcedAccountType,
         updatedUserInfo
       );
 
       res
         .status(201)
-        .json(new ApiResponse(201, result, "Account type set successfully"));
+        .json(new ApiResponse(201, result, "VENDOR account created successfully"));
     } catch (error) {
       console.error("🚨 Set Account Type Error:", error);
 
