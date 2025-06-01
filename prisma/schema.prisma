@@ -56,8 +56,16 @@ model Vendor {
   state               String?
   postalCode          String?     @map("postal_code")
   businessLogo        String?     @map("business_logo")
+  
+  // Verification fields
+  verificationType    String?     @map("verification_type") // 'gst' or 'manual'
   gstNumber           String?     @map("gst_number")
   gstDocument         String?     @map("gst_document")
+  
+  // Manual verification fields
+  idType              String?     @map("id_type") // 'aadhaar' or 'pan'
+  idNumber            String?     @map("id_number")
+  
   otherDocuments      String[]    @map("other_documents")
   verified            Boolean     @default(false)
   profileStep         Int         @default(1) @map("profile_step")
