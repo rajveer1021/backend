@@ -1,3 +1,5 @@
+// src/routes/vendor.routes.js - Complete fixed version
+
 const express = require('express');
 const vendorController = require('../controllers/vendor.controller');
 const { protect, isVendor } = require('../middleware/auth.middleware');
@@ -15,13 +17,18 @@ const router = express.Router();
 // Protect all routes
 router.use(protect, isVendor);
 
+// Step 1: Vendor type selection
 router.post('/onboarding/step1', validate(vendorStep1Schema), vendorController.updateStep1);
+
+// Step 2: Business information with optional business logo
 router.post(
   '/onboarding/step2',
   upload.single('businessLogo'),
   validate(vendorStep2Schema),
   vendorController.updateStep2
 );
+
+// Step 3: Document verification - SIMPLIFIED
 router.post(
   '/onboarding/step3',
   upload.fields([
@@ -32,6 +39,7 @@ router.post(
   vendorController.updateStep3
 );
 
+// Profile management
 router.get('/profile', vendorController.getProfile);
 router.put(
   '/profile',
@@ -43,7 +51,7 @@ router.put(
   vendorController.updateProfile
 );
 
-// NEW ROUTE: Search products with filters
+// Product search
 router.get('/products/search', vendorController.searchProducts);
 
 module.exports = router;

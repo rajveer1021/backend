@@ -1,5 +1,3 @@
-// src/validators/vendor.validator.js - Fixed with proper string validation
-
 const { z } = require('zod');
 
 const vendorStep1Schema = z.object({
@@ -19,61 +17,45 @@ const vendorStep2Schema = z.object({
   postalCode: z.string().regex(/^\d{6}$/, "Postal code must be exactly 6 digits")
 });
 
-// FIXED: Updated Step 3 schema with better validation
+// SIMPLIFIED Step 3 schema - This is the key fix
 const vendorStep3Schema = z.object({
-  verificationType: z.string().min(1, "Verification type is required").refine((val) => {
-    return ['gst', 'manual'].includes(val.toLowerCase());
-  }, {
-    message: "Invalid verification type. Must be 'gst' or 'manual'"
-  }),
-  
-  // GST verification fields (conditional)
+  verificationType: z.string().min(1, "Verification type is required"),
   gstNumber: z.string().optional(),
-  
-  // Manual verification fields (conditional)
-  idType: z.string().optional(),
+  idType: z.string().optional(), 
   idNumber: z.string().optional(),
-  
 }).refine((data) => {
   const verificationType = data.verificationType.toLowerCase();
   
-  // If verification type is GST, GST number is required and must be valid
   if (verificationType === 'gst') {
-    if (!data.gstNumber || typeof data.gstNumber !== 'string') {
+    if (!data.gstNumber || data.gstNumber.trim() === '') {
       return false;
     }
-    
-    // Validate GST format
+    // Basic GST validation
     const gstRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
-    return gstRegex.test(data.gstNumber.trim());
+    return gstRegex.test(data.gstNumber.trim().toUpperCase());
   }
   
-  // If verification type is manual, idType and idNumber are required
   if (verificationType === 'manual') {
-    if (!data.idType || !data.idNumber || typeof data.idType !== 'string' || typeof data.idNumber !== 'string') {
+    if (!data.idType || !data.idNumber || data.idType.trim() === '' || data.idNumber.trim() === '') {
       return false;
     }
     
     const idType = data.idType.toLowerCase();
     const idNumber = data.idNumber.trim();
     
-    // Validate based on ID type
     if (idType === 'aadhaar') {
-      // Aadhaar should be 12 digits (spaces removed)
       const cleanedAadhaar = idNumber.replace(/\s/g, '');
       return /^\d{12}$/.test(cleanedAadhaar);
     } else if (idType === 'pan') {
-      // PAN should be 5 letters + 4 digits + 1 letter
-      return /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(idNumber.toUpperCase());
-    } else {
-      return false; // Invalid ID type
+      return /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/i.test(idNumber);
     }
+    
+    return false;
   }
   
-  return false; // Invalid verification type
+  return false;
 }, {
   message: "Invalid verification data. Please check your inputs.",
-  path: ["verificationType"] // This will show the error on verificationType field
 });
 
 const productSearchSchema = z.object({

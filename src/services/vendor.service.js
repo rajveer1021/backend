@@ -1,4 +1,5 @@
 // src/services/vendor.service.js - Complete fixed version
+
 const prisma = require('../config/database');
 const ApiError = require('../utils/ApiError');
 const { checkProfileCompletion } = require('../utils/profileCompletion');
@@ -6,20 +7,16 @@ const { checkProfileCompletion } = require('../utils/profileCompletion');
 class VendorService {
   async updateStep1(userId, data) {
     try {
-      // Ensure vendorType is a string and uppercase
       const vendorType = String(data.vendorType || '').toUpperCase().trim();
       
       if (!vendorType) {
         throw new ApiError(400, 'Vendor type is required');
       }
 
-      // Validate vendor type
       const validTypes = ['MANUFACTURER', 'WHOLESALER', 'RETAILER'];
       if (!validTypes.includes(vendorType)) {
         throw new ApiError(400, 'Invalid vendor type. Must be MANUFACTURER, WHOLESALER, or RETAILER');
       }
-
-      console.log('📝 Updating step 1 for user:', userId, 'with vendor type:', vendorType);
 
       const vendor = await prisma.vendor.update({
         where: { userId },
@@ -38,7 +35,6 @@ class VendorService {
 
   async updateStep2(userId, data, businessLogo) {
     try {
-      // Ensure all fields are strings and properly validated
       const businessName = String(data.businessName || '').trim();
       const businessAddress1 = String(data.businessAddress1 || '').trim();
       const businessAddress2 = String(data.businessAddress2 || '').trim();
@@ -46,7 +42,6 @@ class VendorService {
       const state = String(data.state || '').trim();
       const postalCode = String(data.postalCode || '').trim();
 
-      // Validate required fields
       if (!businessName || businessName.length < 2) {
         throw new ApiError(400, 'Business name must be at least 2 characters');
       }
@@ -77,8 +72,6 @@ class VendorService {
         updateData.businessLogo = businessLogo.location;
       }
 
-      console.log('📝 Updating step 2 for user:', userId, 'with data:', updateData);
-
       const vendor = await prisma.vendor.update({
         where: { userId },
         data: updateData,
@@ -93,7 +86,8 @@ class VendorService {
 
   async updateStep3(userId, data, files = {}) {
     try {
-      // Ensure verificationType is a string
+
+      // Clean and validate input data
       const verificationType = String(data.verificationType || '').toLowerCase().trim();
       
       if (!verificationType) {
@@ -123,8 +117,6 @@ class VendorService {
         }
 
         updateData.gstNumber = gstNumber;
-        
-        // Clear manual verification fields if switching from manual to GST
         updateData.idType = null;
         updateData.idNumber = null;
         
@@ -163,8 +155,6 @@ class VendorService {
 
         updateData.idType = idType;
         updateData.idNumber = idNumber;
-        
-        // Clear GST fields if switching from GST to manual
         updateData.gstNumber = null;
         updateData.gstDocument = null;
 
@@ -173,8 +163,6 @@ class VendorService {
           updateData.otherDocuments = files.otherDocuments.map(file => file.location);
         }
       }
-
-      console.log('📝 Updating step 3 for user:', userId, 'with data:', updateData);
 
       const vendor = await prisma.vendor.update({
         where: { userId },
@@ -231,7 +219,7 @@ class VendorService {
       // Build where clause
       const where = {
         vendorId,
-        isActive: true, // Only show active products
+        isActive: true,
       };
 
       // Add search filter
@@ -281,7 +269,6 @@ class VendorService {
       }
 
       const [products, total, categories] = await Promise.all([
-        // Get filtered products
         prisma.product.findMany({
           where,
           skip,
@@ -301,10 +288,8 @@ class VendorService {
           },
         }),
         
-        // Get total count for pagination
         prisma.product.count({ where }),
         
-        // Get available categories for this vendor
         prisma.product.findMany({
           where: { vendorId, isActive: true },
           select: { category: true },
@@ -313,7 +298,6 @@ class VendorService {
         }),
       ]);
 
-      // Extract unique categories
       const availableCategories = categories.map(item => item.category);
 
       return {
