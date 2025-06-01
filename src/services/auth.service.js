@@ -1,3 +1,4 @@
+// src/services/auth.service.js - Fixed with better Google Auth
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const prisma = require('../config/database');
@@ -14,38 +15,43 @@ class AuthService {
     });
 
     if (existingUser) {
-      throw new ApiError(400, 'User already exists');
+      throw new ApiError(400, 'User already exists with this email');
     }
 
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create user
-    const user = await prisma.user.create({
-      data: {
-        email,
-        password: hashedPassword,
-        firstName,
-        lastName,
-        accountType,
-      },
-    });
-
-    // Create vendor profile if account type is vendor
-    if (accountType === 'VENDOR') {
-      await prisma.vendor.create({
+    // Create user with transaction to ensure consistency
+    const result = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
         data: {
-          userId: user.id,
+          email,
+          password: hashedPassword,
+          firstName,
+          lastName,
+          accountType,
         },
       });
-    }
 
-    return this.generateToken(user);
+      // Create vendor profile if account type is vendor
+      if (accountType === 'VENDOR') {
+        await tx.vendor.create({
+          data: {
+            userId: user.id,
+          },
+        });
+      }
+
+      return user;
+    });
+
+    return this.generateToken(result);
   }
 
   async login(email, password) {
     const user = await prisma.user.findUnique({
       where: { email },
+      include: { vendor: true },
     });
 
     if (!user || !user.password) {
@@ -61,48 +67,129 @@ class AuthService {
     return this.generateToken(user);
   }
 
-  async googleAuth(token, accountType = 'BUYER') {
-    const ticket = await googleClient.verifyIdToken({
-      idToken: token,
-      audience: process.env.GOOGLE_CLIENT_ID,
-    });
-
-    const payload = ticket.getPayload();
-    const { email, given_name, family_name, sub: googleId } = payload;
-
-    let user = await prisma.user.findUnique({
-      where: { email },
-    });
-
-    if (!user) {
-      // Create new user
-      user = await prisma.user.create({
-        data: {
-          email,
-          firstName: given_name,
-          lastName: family_name,
-          googleId,
-          accountType,
-        },
+  // FIXED: Improved Google Auth with better error handling
+  async googleAuth(credential, accountType = 'VENDOR') {
+    try {
+      console.log('🔍 Verifying Google credential...');
+      
+      // Verify the Google ID token
+      const ticket = await googleClient.verifyIdToken({
+        idToken: credential,
+        audience: process.env.GOOGLE_CLIENT_ID,
       });
 
-      // Create vendor profile if account type is vendor
-      if (accountType === 'VENDOR') {
-        await prisma.vendor.create({
-          data: {
-            userId: user.id,
-          },
-        });
+      const payload = ticket.getPayload();
+      console.log('✅ Google payload verified:', {
+        email: payload.email,
+        name: payload.name,
+        given_name: payload.given_name,
+        family_name: payload.family_name
+      });
+
+      const { 
+        email, 
+        given_name, 
+        family_name, 
+        sub: googleId,
+        name,
+        picture 
+      } = payload;
+
+      if (!email) {
+        throw new ApiError(400, 'Email not provided by Google');
       }
-    } else if (!user.googleId) {
-      // Link existing account with Google
-      user = await prisma.user.update({
-        where: { id: user.id },
-        data: { googleId },
-      });
-    }
 
-    return this.generateToken(user);
+      // Use transaction to ensure data consistency
+      const result = await prisma.$transaction(async (tx) => {
+        let user = await tx.user.findUnique({
+          where: { email },
+          include: { vendor: true },
+        });
+
+        if (!user) {
+          console.log('🆕 Creating new user via Google Auth');
+          // Create new user
+          user = await tx.user.create({
+            data: {
+              email,
+              firstName: given_name || name?.split(' ')[0] || 'User',
+              lastName: family_name || name?.split(' ').slice(1).join(' ') || '',
+              googleId,
+              accountType: accountType.toUpperCase(),
+            },
+            include: { vendor: true },
+          });
+
+          // Create vendor profile if account type is vendor
+          if (accountType.toUpperCase() === 'VENDOR') {
+            await tx.vendor.create({
+              data: {
+                userId: user.id,
+              },
+            });
+            
+            // Refetch user with vendor data
+            user = await tx.user.findUnique({
+              where: { id: user.id },
+              include: { vendor: true },
+            });
+          }
+        } else {
+          console.log('👤 Existing user found, updating Google ID if needed');
+          
+          // Check if account types match
+          if (user.accountType !== accountType.toUpperCase()) {
+            throw new ApiError(409, `An account with this email already exists as a ${user.accountType.toLowerCase()}. Please sign in with the correct account type.`);
+          }
+
+          // Link existing account with Google if not already linked
+          if (!user.googleId) {
+            user = await tx.user.update({
+              where: { id: user.id },
+              data: { googleId },
+              include: { vendor: true },
+            });
+          }
+
+          // Ensure vendor profile exists for vendor accounts
+          if (user.accountType === 'VENDOR' && !user.vendor) {
+            await tx.vendor.create({
+              data: {
+                userId: user.id,
+              },
+            });
+            
+            // Refetch user with vendor data
+            user = await tx.user.findUnique({
+              where: { id: user.id },
+              include: { vendor: true },
+            });
+          }
+        }
+
+        return user;
+      });
+
+      console.log('✅ Google authentication successful for user:', result.email);
+      return this.generateToken(result);
+
+    } catch (error) {
+      console.error('🚨 Google Auth Service Error:', error);
+      
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      
+      if (error.message?.includes('Invalid token')) {
+        throw new ApiError(400, 'Invalid Google credential');
+      }
+      
+      if (error.message?.includes('Token used too late')) {
+        throw new ApiError(400, 'Google credential has expired. Please try again.');
+      }
+      
+      throw new ApiError(500, `Google authentication failed: ${error.message}`);
+    }
   }
 
   async changePassword(userId, currentPassword, newPassword) {
@@ -130,7 +217,6 @@ class AuthService {
     return { message: 'Password changed successfully' };
   }
 
-  // FIXED: Update user profile method
   async updateProfile(userId, profileData) {
     const { firstName, lastName, email } = profileData;
 
@@ -192,6 +278,7 @@ class AuthService {
         firstName: user.firstName,
         lastName: user.lastName,
         accountType: user.accountType,
+        googleId: user.googleId,
       },
     };
   }

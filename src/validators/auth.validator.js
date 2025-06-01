@@ -1,3 +1,4 @@
+// src/validators/auth.validator.js - Fixed validation schemas
 const { z } = require('zod');
 
 const signupSchema = z.object({
@@ -18,18 +19,17 @@ const changePasswordSchema = z.object({
   newPassword: z.string().min(6).max(100),
 });
 
+// FIXED: Google Auth Schema to match frontend
 const googleAuthSchema = z.object({
-  token: z.string(),
-  accountType: z.enum(['BUYER', 'VENDOR']).optional(),
+  credential: z.string().min(1, 'Google credential is required'),
+  accountType: z.enum(['BUYER', 'VENDOR']).default('VENDOR'),
 });
 
-// NEW SCHEMA: Profile update validation
 const updateProfileSchema = z.object({
   firstName: z.string().min(2).max(50).optional(),
   lastName: z.string().min(2).max(50).optional(),
   email: z.string().email().optional(),
 }).refine((data) => {
-  // At least one field must be provided
   return Object.keys(data).length > 0;
 }, {
   message: "At least one field (firstName, lastName, or email) must be provided",
