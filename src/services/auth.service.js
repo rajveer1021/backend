@@ -1,4 +1,5 @@
-// src/services/auth.service.js - Fixed with better Google Auth
+// src/services/auth.service.js - Complete implementation with account type selection
+
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const prisma = require('../config/database');
@@ -67,8 +68,8 @@ class AuthService {
     return this.generateToken(user);
   }
 
-  // FIXED: Improved Google Auth with better error handling
-  async googleAuth(credential, accountType = 'VENDOR') {
+  // UPDATED: Google Auth with account type selection flow
+  async googleAuth(credential, accountType = null) {
     try {
       console.log('🔍 Verifying Google credential...');
       
@@ -99,17 +100,33 @@ class AuthService {
         throw new ApiError(400, 'Email not provided by Google');
       }
 
-      // Use transaction to ensure data consistency
-      const result = await prisma.$transaction(async (tx) => {
-        let user = await tx.user.findUnique({
-          where: { email },
-          include: { vendor: true },
-        });
+      // Check if user exists
+      let user = await prisma.user.findUnique({
+        where: { email },
+        include: { vendor: true },
+      });
 
-        if (!user) {
-          console.log('🆕 Creating new user via Google Auth');
-          // Create new user
-          user = await tx.user.create({
+      if (!user) {
+        // NEW USER: Check if account type is provided
+        if (!accountType) {
+          // Return special response indicating account type selection is needed
+          return {
+            needsAccountTypeSelection: true,
+            userInfo: {
+              email,
+              name: name || `${given_name} ${family_name}`.trim(),
+              firstName: given_name || name?.split(' ')[0] || 'User',
+              lastName: family_name || name?.split(' ').slice(1).join(' ') || '',
+              googleId,
+              picture
+            },
+            message: 'Please select your account type to continue'
+          };
+        }
+
+        // Create new user with selected account type
+        const result = await prisma.$transaction(async (tx) => {
+          const newUser = await tx.user.create({
             data: {
               email,
               firstName: given_name || name?.split(' ')[0] || 'User',
@@ -124,54 +141,56 @@ class AuthService {
           if (accountType.toUpperCase() === 'VENDOR') {
             await tx.vendor.create({
               data: {
-                userId: user.id,
+                userId: newUser.id,
               },
             });
             
             // Refetch user with vendor data
-            user = await tx.user.findUnique({
-              where: { id: user.id },
+            const userWithVendor = await tx.user.findUnique({
+              where: { id: newUser.id },
               include: { vendor: true },
-            });
-          }
-        } else {
-          console.log('👤 Existing user found, updating Google ID if needed');
-          
-          // Check if account types match
-          if (user.accountType !== accountType.toUpperCase()) {
-            throw new ApiError(409, `An account with this email already exists as a ${user.accountType.toLowerCase()}. Please sign in with the correct account type.`);
-          }
-
-          // Link existing account with Google if not already linked
-          if (!user.googleId) {
-            user = await tx.user.update({
-              where: { id: user.id },
-              data: { googleId },
-              include: { vendor: true },
-            });
-          }
-
-          // Ensure vendor profile exists for vendor accounts
-          if (user.accountType === 'VENDOR' && !user.vendor) {
-            await tx.vendor.create({
-              data: {
-                userId: user.id,
-              },
             });
             
-            // Refetch user with vendor data
-            user = await tx.user.findUnique({
-              where: { id: user.id },
-              include: { vendor: true },
-            });
+            return userWithVendor;
           }
+
+          return newUser;
+        });
+
+        console.log('✅ New user created via Google Auth with account type:', accountType);
+        return this.generateToken(result);
+
+      } else {
+        // EXISTING USER
+        console.log('👤 Existing user found');
+        
+        // Link existing account with Google if not already linked
+        if (!user.googleId) {
+          user = await prisma.user.update({
+            where: { id: user.id },
+            data: { googleId },
+            include: { vendor: true },
+          });
         }
 
-        return user;
-      });
+        // Ensure vendor profile exists for vendor accounts
+        if (user.accountType === 'VENDOR' && !user.vendor) {
+          await prisma.vendor.create({
+            data: {
+              userId: user.id,
+            },
+          });
+          
+          // Refetch user with vendor data
+          user = await prisma.user.findUnique({
+            where: { id: user.id },
+            include: { vendor: true },
+          });
+        }
 
-      console.log('✅ Google authentication successful for user:', result.email);
-      return this.generateToken(result);
+        console.log('✅ Existing user Google authentication successful');
+        return this.generateToken(user);
+      }
 
     } catch (error) {
       console.error('🚨 Google Auth Service Error:', error);
@@ -189,6 +208,86 @@ class AuthService {
       }
       
       throw new ApiError(500, `Google authentication failed: ${error.message}`);
+    }
+  }
+
+  // NEW METHOD: Set account type for Google users
+  async setGoogleUserAccountType(email, googleId, accountType, userInfo = null) {
+    try {
+      console.log('🔧 Setting account type for Google user:', email, accountType);
+
+      // Validate account type
+      if (!['BUYER', 'VENDOR'].includes(accountType.toUpperCase())) {
+        throw new ApiError(400, 'Invalid account type. Must be BUYER or VENDOR');
+      }
+
+      // Check if user already exists
+      const existingUser = await prisma.user.findFirst({
+        where: {
+          OR: [
+            { email },
+            { googleId }
+          ]
+        },
+      });
+
+      if (existingUser) {
+        throw new ApiError(409, 'User already exists');
+      }
+
+      // Create user with transaction
+      const result = await prisma.$transaction(async (tx) => {
+        const userData = {
+          email,
+          googleId,
+          accountType: accountType.toUpperCase(),
+        };
+
+        // Use provided user info or defaults
+        if (userInfo) {
+          userData.firstName = userInfo.firstName || 'User';
+          userData.lastName = userInfo.lastName || '';
+        } else {
+          userData.firstName = 'User';
+          userData.lastName = '';
+        }
+
+        const user = await tx.user.create({
+          data: userData,
+          include: { vendor: true },
+        });
+
+        // Create vendor profile if account type is vendor
+        if (accountType.toUpperCase() === 'VENDOR') {
+          await tx.vendor.create({
+            data: {
+              userId: user.id,
+            },
+          });
+          
+          // Refetch user with vendor data
+          const userWithVendor = await tx.user.findUnique({
+            where: { id: user.id },
+            include: { vendor: true },
+          });
+          
+          return userWithVendor;
+        }
+
+        return user;
+      });
+
+      console.log('✅ Google user account type set successfully');
+      return this.generateToken(result);
+
+    } catch (error) {
+      console.error('🚨 Set Google User Account Type Error:', error);
+      
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      
+      throw new ApiError(500, `Failed to set account type: ${error.message}`);
     }
   }
 
