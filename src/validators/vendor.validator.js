@@ -17,45 +17,85 @@ const vendorStep2Schema = z.object({
   postalCode: z.string().regex(/^\d{6}$/, "Postal code must be exactly 6 digits")
 });
 
-// SIMPLIFIED Step 3 schema - This is the key fix
+// FIXED: Enhanced Step 3 schema with better error messages
 const vendorStep3Schema = z.object({
-  verificationType: z.string().min(1, "Verification type is required"),
+  verificationType: z.enum(['gst', 'manual'], {
+    required_error: "Verification type is required",
+    invalid_type_error: "Verification type must be either 'gst' or 'manual'"
+  }),
   gstNumber: z.string().optional(),
   idType: z.string().optional(), 
   idNumber: z.string().optional(),
-}).refine((data) => {
+}).superRefine((data, ctx) => {
   const verificationType = data.verificationType.toLowerCase();
   
   if (verificationType === 'gst') {
+    // GST validation
     if (!data.gstNumber || data.gstNumber.trim() === '') {
-      return false;
-    }
-    // Basic GST validation
-    const gstRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
-    return gstRegex.test(data.gstNumber.trim().toUpperCase());
-  }
-  
-  if (verificationType === 'manual') {
-    if (!data.idType || !data.idNumber || data.idType.trim() === '' || data.idNumber.trim() === '') {
-      return false;
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['gstNumber'],
+        message: "GST number is required for GST verification"
+      });
+      return;
     }
     
-    const idType = data.idType.toLowerCase();
+    const gstRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+    if (!gstRegex.test(data.gstNumber.trim().toUpperCase())) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['gstNumber'],
+        message: "Invalid GST number format. Expected format: 22AAAAA0000A1Z5"
+      });
+    }
+  } 
+  else if (verificationType === 'manual') {
+    // Manual verification validation
+    if (!data.idType || data.idType.trim() === '') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['idType'],
+        message: "ID type is required for manual verification"
+      });
+    }
+    
+    if (!data.idNumber || data.idNumber.trim() === '') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['idNumber'],
+        message: "ID number is required for manual verification"
+      });
+      return;
+    }
+    
+    const idType = (data.idType || '').toLowerCase();
     const idNumber = data.idNumber.trim();
     
     if (idType === 'aadhaar') {
       const cleanedAadhaar = idNumber.replace(/\s/g, '');
-      return /^\d{12}$/.test(cleanedAadhaar);
+      if (!/^\d{12}$/.test(cleanedAadhaar)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['idNumber'],
+          message: "Invalid Aadhaar number. Must be 12 digits"
+        });
+      }
     } else if (idType === 'pan') {
-      return /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/i.test(idNumber);
+      if (!/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/i.test(idNumber)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['idNumber'],
+          message: "Invalid PAN format. Expected format: ABCDE1234F"
+        });
+      }
+    } else if (idType && !['aadhaar', 'pan'].includes(idType)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['idType'],
+        message: "Invalid ID type. Must be 'aadhaar' or 'pan'"
+      });
     }
-    
-    return false;
   }
-  
-  return false;
-}, {
-  message: "Invalid verification data. Please check your inputs.",
 });
 
 const productSearchSchema = z.object({

@@ -14,21 +14,25 @@ class DashboardService {
         throw new ApiError(404, 'Vendor not found');
       }
 
-      // Get total products count
+      // Get total products count - only count active/non-deleted products
       const totalProducts = await prisma.product.count({
-        where: { vendorId }
+        where: { 
+          vendorId,
+          isActive: true // This was missing in your original code!
+        }
       });
 
-      // Get total inquiries count
+      // Get total inquiries count - only for active products
       const totalInquiries = await prisma.inquiry.count({
         where: {
           product: {
-            vendorId
+            vendorId,
+            isActive: true
           }
         }
       });
 
-      // Get stock statistics
+      // Get stock statistics - ensure we only count active products
       const [inStock, outOfStock, lowStock] = await Promise.all([
         // Products with stock > 10 (considering as in stock)
         prisma.product.count({
@@ -38,7 +42,7 @@ class DashboardService {
             isActive: true
           }
         }),
-        // Products with stock = 0 (out of stock)
+        // Products with stock = 0 (out of stock) 
         prisma.product.count({
           where: {
             vendorId,
@@ -56,6 +60,8 @@ class DashboardService {
         })
       ]);
 
+      // Optional: Add debugging information (remove in production)
+
       return {
         isProfileVerified: vendor.verified,
         totalProducts,
@@ -65,6 +71,49 @@ class DashboardService {
         lowStock
       };
     } catch (error) {
+      console.error('Error in getVendorDashboardStats:', error);
+      throw error;
+    }
+  }
+
+  // Add this helper method to debug product counts
+  async debugProductCounts(vendorId) {
+    try {
+      const allProducts = await prisma.product.count({
+        where: { vendorId }
+      });
+
+      const activeProducts = await prisma.product.count({
+        where: { 
+          vendorId,
+          isActive: true 
+        }
+      });
+
+      const inactiveProducts = await prisma.product.count({
+        where: { 
+          vendorId,
+          isActive: false 
+        }
+      });
+
+      // If using soft deletes with isActive flag
+      const deletedProducts = await prisma.product.count({
+        where: { 
+          vendorId,
+          isActive: false
+        }
+      });
+
+
+      return {
+        allProducts,
+        activeProducts,
+        inactiveProducts,
+        deletedProducts
+      };
+    } catch (error) {
+      console.error('Error in debugProductCounts:', error);
       throw error;
     }
   }

@@ -86,22 +86,23 @@ class VendorService {
 
   async updateStep3(userId, data, files = {}) {
     try {
-
+  
       // Clean and validate input data
       const verificationType = String(data.verificationType || '').toLowerCase().trim();
       
       if (!verificationType) {
         throw new ApiError(400, 'Verification type is required');
       }
-
+  
       if (!['gst', 'manual'].includes(verificationType)) {
         throw new ApiError(400, 'Invalid verification type. Must be "gst" or "manual"');
       }
-
+  
       const updateData = {
         verificationType: verificationType,
+        profileStep: 3, // Always set to step 3 when updating
       };
-
+  
       if (verificationType === 'gst') {
         // Handle GST verification
         const gstNumber = String(data.gstNumber || '').trim().toUpperCase();
@@ -109,21 +110,22 @@ class VendorService {
         if (!gstNumber) {
           throw new ApiError(400, 'GST number is required for GST verification');
         }
-
+  
         // Validate GST format
         const gstRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
         if (!gstRegex.test(gstNumber)) {
           throw new ApiError(400, 'Invalid GST number format');
         }
-
+  
         updateData.gstNumber = gstNumber;
+        // Clear manual verification fields when using GST
         updateData.idType = null;
         updateData.idNumber = null;
         
         if (files.gstDocument && files.gstDocument[0]) {
           updateData.gstDocument = files.gstDocument[0].location;
         }
-
+  
       } else if (verificationType === 'manual') {
         // Handle manual verification
         const idType = String(data.idType || '').toLowerCase().trim();
@@ -132,12 +134,12 @@ class VendorService {
         if (!idType || !idNumber) {
           throw new ApiError(400, 'ID type and ID number are required for manual verification');
         }
-
+  
         // Validate ID type
         if (!['aadhaar', 'pan'].includes(idType)) {
           throw new ApiError(400, 'Invalid ID type. Must be "aadhaar" or "pan"');
         }
-
+  
         // Format and validate ID number based on type
         if (idType === 'pan') {
           idNumber = idNumber.toUpperCase();
@@ -152,32 +154,26 @@ class VendorService {
             throw new ApiError(400, 'Invalid Aadhaar format. Should be 12 digits');
           }
         }
-
+  
         updateData.idType = idType;
         updateData.idNumber = idNumber;
+        // Clear GST fields when using manual verification
         updateData.gstNumber = null;
         updateData.gstDocument = null;
-
+  
         // Handle document uploads for manual verification
         if (files.otherDocuments && files.otherDocuments.length > 0) {
           updateData.otherDocuments = files.otherDocuments.map(file => file.location);
         }
       }
-
+    
       const vendor = await prisma.vendor.update({
         where: { userId },
         data: updateData,
       });
-
+  
       const completion = checkProfileCompletion(vendor);
-      
-      if (completion.isComplete) {
-        await prisma.vendor.update({
-          where: { userId },
-          data: { profileStep: 3 },
-        });
-      }
-
+        
       return { vendor, completion };
     } catch (error) {
       console.error('❌ Step 3 update error:', error);
