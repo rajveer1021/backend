@@ -8,7 +8,8 @@
     "dev": "nodemon server.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "prisma:push": "prisma db push"
+    "prisma:push": "prisma db push",
+    "create-admin": "node scripts/createAdmin.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.817.0",
