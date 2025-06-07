@@ -1,11 +1,14 @@
-// src/controllers/admin.controller.js - Enhanced with vendor and buyer management
+// src/controllers/admin.controller.js - Enhanced with all vendor and buyer management APIs
 
 const adminService = require('../services/admin.service');
 const asyncHandler = require('../utils/asyncHandler');
 const ApiResponse = require('../utils/ApiResponse');
+const ApiError = require('../utils/ApiError');
+const prisma = require('../config/database'); // Added missing import
 
 class AdminController {
-  // ===== EXISTING METHODS =====
+  // ===== EXISTING CORE METHODS =====
+  
   getAllUsers = asyncHandler(async (req, res) => {
     const { page = 1, limit = 10, accountType } = req.query;
     const result = await adminService.getAllUsers(
@@ -16,6 +19,9 @@ class AdminController {
     res.status(200).json(new ApiResponse(200, result, 'Users fetched successfully'));
   });
 
+  /**
+   * 5. API to list all vendor profiles which are submitted ✅
+   */
   getVendorSubmissions = asyncHandler(async (req, res) => {
     const { page = 1, limit = 10, verified } = req.query;
     const result = await adminService.getVendorSubmissions(
@@ -26,6 +32,9 @@ class AdminController {
     res.status(200).json(new ApiResponse(200, result, 'Vendor submissions fetched successfully'));
   });
 
+  /**
+   * 6. API to verify the vendor business profile ✅
+   */
   verifyVendor = asyncHandler(async (req, res) => {
     const { verified } = req.body;
     const result = await adminService.verifyVendor(req.params.vendorId, verified);
@@ -43,9 +52,11 @@ class AdminController {
     res.status(200).json(new ApiResponse(200, result, 'Dashboard stats fetched successfully'));
   });
 
-  // ===== NEW ENHANCED VENDOR MANAGEMENT =====
+  // ===== ENHANCED VENDOR MANAGEMENT =====
 
   /**
+   * 1. API to list all vendors on the platform ✅
+   * 2. API to search and filter vendors by name, email, vendor type, verification status ✅
    * GET /api/admin/vendors - Get vendors with advanced search and filtering
    * Query parameters:
    * - page: Page number (default: 1)
@@ -99,9 +110,11 @@ class AdminController {
     res.status(200).json(new ApiResponse(200, result, 'Vendor statistics fetched successfully'));
   });
 
-  // ===== NEW BUYER MANAGEMENT =====
+  // ===== BUYER MANAGEMENT =====
 
   /**
+   * 3. API to list buyers on the platform ✅
+   * 4. API to search and filter buyers by name, email ✅
    * GET /api/admin/buyers - Get buyers with search and filtering
    * Query parameters:
    * - page: Page number (default: 1)
@@ -149,7 +162,7 @@ class AdminController {
     res.status(200).json(new ApiResponse(200, result, 'Buyer statistics fetched successfully'));
   });
 
-  // ===== BULK ACTIONS (BONUS) =====
+  // ===== BULK ACTIONS =====
 
   /**
    * PUT /api/admin/vendors/bulk-verify - Bulk verify/unverify vendors
@@ -174,23 +187,12 @@ class AdminController {
     }
 
     try {
-      // Use transaction for bulk operation
-      const result = await prisma.$transaction(
-        vendorIds.map(vendorId => 
-          prisma.vendor.update({
-            where: { id: vendorId },
-            data: { verified }
-          })
-        )
-      );
+      const result = await adminService.bulkVerifyVendors(vendorIds, verified);
 
       res.status(200).json(new ApiResponse(
         200, 
-        { 
-          updatedCount: result.length,
-          updatedVendors: result 
-        }, 
-        `${result.length} vendors ${verified ? 'verified' : 'unverified'} successfully`
+        result, 
+        `${result.updatedCount} vendors ${verified ? 'verified' : 'unverified'} successfully`
       ));
     } catch (error) {
       console.error('❌ Bulk verify error:', error);
@@ -213,100 +215,216 @@ class AdminController {
       });
     }
 
-    const search = searchTerm.trim();
-    const searchLimit = parseInt(limit);
-
     try {
-      const [users, vendors, products] = await Promise.all([
-        // Search users
-        prisma.user.findMany({
-          where: {
-            OR: [
-              { firstName: { contains: search, mode: 'insensitive' } },
-              { lastName: { contains: search, mode: 'insensitive' } },
-              { email: { contains: search, mode: 'insensitive' } }
-            ]
-          },
-          take: searchLimit,
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-            accountType: true
-          }
-        }),
-
-        // Search vendors by business name
-        prisma.vendor.findMany({
-          where: {
-            businessName: { contains: search, mode: 'insensitive' }
-          },
-          take: searchLimit,
-          include: {
-            user: {
-              select: {
-                firstName: true,
-                lastName: true,
-                email: true
-              }
-            }
-          }
-        }),
-
-        // Search products
-        prisma.product.findMany({
-          where: {
-            OR: [
-              { name: { contains: search, mode: 'insensitive' } },
-              { description: { contains: search, mode: 'insensitive' } }
-            ]
-          },
-          take: searchLimit,
-          include: {
-            vendor: {
-              include: {
-                user: {
-                  select: {
-                    firstName: true,
-                    lastName: true,
-                    email: true
-                  }
-                }
-              }
-            }
-          }
-        })
-      ]);
-
-      const results = {
-        users: users.map(user => ({
-          ...user,
-          type: 'user',
-          display: `${user.firstName} ${user.lastName} (${user.email})`
-        })),
-        vendors: vendors.map(vendor => ({
-          ...vendor,
-          type: 'vendor',
-          display: `${vendor.businessName} - ${vendor.user.firstName} ${vendor.user.lastName}`
-        })),
-        products: products.map(product => ({
-          ...product,
-          type: 'product',
-          display: `${product.name} by ${product.vendor.user.firstName} ${product.vendor.user.lastName}`
-        }))
-      };
-
-      const totalResults = users.length + vendors.length + products.length;
+      const result = await adminService.universalSearch(searchTerm.trim(), limit);
 
       res.status(200).json(new ApiResponse(
         200, 
-        { results, totalResults }, 
-        `Found ${totalResults} results for "${search}"`
+        result, 
+        `Found ${result.totalResults} results for "${result.searchTerm}"`
       ));
     } catch (error) {
       console.error('❌ Universal search error:', error);
       throw new ApiError(500, 'Universal search failed');
+    }
+  });
+
+  // ===== ADDITIONAL UTILITY METHODS =====
+
+  /**
+   * GET /api/admin/vendors/:vendorId - Get single vendor details
+   */
+  getVendorDetails = asyncHandler(async (req, res) => {
+    console.log('🔍 Admin fetching vendor details:', req.params.vendorId);
+
+    try {
+      const vendor = await prisma.vendor.findUnique({
+        where: { id: req.params.vendorId },
+        include: {
+          user: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+              accountType: true,
+              googleId: true,
+              createdAt: true,
+            },
+          },
+          products: {
+            where: { isActive: true },
+            select: {
+              id: true,
+              name: true,
+              price: true,
+              category: true,
+              stock: true,
+              createdAt: true,
+            },
+            orderBy: { createdAt: 'desc' },
+            take: 10, // Latest 10 products
+          },
+          _count: {
+            select: {
+              products: {
+                where: { isActive: true }
+              }
+            }
+          }
+        },
+      });
+
+      if (!vendor) {
+        throw new ApiError(404, 'Vendor not found');
+      }
+
+      // Get additional statistics
+      const [totalInquiries, recentInquiries] = await Promise.all([
+        prisma.inquiry.count({
+          where: {
+            product: {
+              vendorId: vendor.id,
+              isActive: true
+            }
+          }
+        }),
+        prisma.inquiry.findMany({
+          where: {
+            product: {
+              vendorId: vendor.id,
+              isActive: true
+            }
+          },
+          select: {
+            id: true,
+            message: true,
+            status: true,
+            createdAt: true,
+            buyer: {
+              select: {
+                firstName: true,
+                lastName: true,
+                email: true,
+              },
+            },
+            product: {
+              select: {
+                name: true,
+              },
+            },
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 5, // Latest 5 inquiries
+        }),
+      ]);
+
+      const vendorDetails = {
+        ...vendor,
+        verificationStatus: adminService.getVerificationStatusLabel(vendor),
+        fullAddress: [
+          vendor.businessAddress1,
+          vendor.businessAddress2,
+          vendor.city,
+          vendor.state,
+          vendor.postalCode
+        ].filter(Boolean).join(', '),
+        statistics: {
+          totalProducts: vendor._count.products,
+          totalInquiries,
+          activeProducts: vendor.products.filter(p => p.stock > 0).length,
+          outOfStockProducts: vendor.products.filter(p => p.stock === 0).length,
+        },
+        recentInquiries,
+      };
+
+      res.status(200).json(new ApiResponse(200, vendorDetails, 'Vendor details fetched successfully'));
+    } catch (error) {
+      console.error('❌ Get vendor details error:', error);
+      throw error instanceof ApiError ? error : new ApiError(500, 'Failed to fetch vendor details');
+    }
+  });
+
+  /**
+   * GET /api/admin/buyers/:buyerId - Get single buyer details
+   */
+  getBuyerDetails = asyncHandler(async (req, res) => {
+    console.log('🔍 Admin fetching buyer details:', req.params.buyerId);
+
+    try {
+      const buyer = await prisma.user.findFirst({
+        where: { 
+          id: req.params.buyerId,
+          accountType: 'BUYER'
+        },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          accountType: true,
+          googleId: true,
+          createdAt: true,
+          updatedAt: true,
+          inquiries: {
+            select: {
+              id: true,
+              message: true,
+              status: true,
+              vendorResponse: true,
+              createdAt: true,
+              product: {
+                select: {
+                  id: true,
+                  name: true,
+                  price: true,
+                  vendor: {
+                    select: {
+                      businessName: true,
+                      user: {
+                        select: {
+                          firstName: true,
+                          lastName: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            orderBy: { createdAt: 'desc' },
+          },
+          _count: {
+            select: {
+              inquiries: true,
+            },
+          },
+        },
+      });
+
+      if (!buyer) {
+        throw new ApiError(404, 'Buyer not found');
+      }
+
+      const inquiryStats = {
+        total: buyer._count.inquiries,
+        open: buyer.inquiries.filter(i => i.status === 'OPEN').length,
+        responded: buyer.inquiries.filter(i => i.status === 'RESPONDED').length,
+        closed: buyer.inquiries.filter(i => i.status === 'CLOSED').length,
+      };
+
+      const buyerDetails = {
+        ...buyer,
+        fullName: `${buyer.firstName} ${buyer.lastName}`.trim(),
+        isGoogleUser: !!buyer.googleId,
+        inquiryStats,
+        recentInquiries: buyer.inquiries.slice(0, 10), // Latest 10 inquiries
+      };
+
+      res.status(200).json(new ApiResponse(200, buyerDetails, 'Buyer details fetched successfully'));
+    } catch (error) {
+      console.error('❌ Get buyer details error:', error);
+      throw error instanceof ApiError ? error : new ApiError(500, 'Failed to fetch buyer details');
     }
   });
 }

@@ -8,7 +8,8 @@ const {
   vendorFilterSchema, 
   buyerFilterSchema, 
   bulkVerifySchema,
-  universalSearchSchema 
+  universalSearchSchema,
+  vendorVerificationSchema
 } = require('../validators/admin.validator');
 
 const router = express.Router();
@@ -16,21 +17,27 @@ const router = express.Router();
 // Protect all routes with admin middleware
 router.use(protect, isAdmin);
 
-// ===== EXISTING ROUTES =====
+// ===== CORE ADMIN ROUTES =====
 router.get('/users', adminController.getAllUsers);
-router.get('/vendors/submissions', adminController.getVendorSubmissions);
-router.put('/vendors/:vendorId/verify', adminController.verifyVendor);
 router.get('/products', adminController.getAllProducts);
 router.get('/dashboard/stats', adminController.getDashboardStats);
 
-// ===== NEW ENHANCED VENDOR MANAGEMENT ROUTES =====
+// ===== VENDOR MANAGEMENT ROUTES =====
 
 /**
+ * 1. API to list all vendors on the platform ✅
+ * 2. API to search and filter vendors ✅
  * GET /api/admin/vendors
- * Get vendors with advanced search and filtering
  * Query params: page, limit, search, vendorType, verificationStatus, sortBy, sortOrder
  */
 router.get('/vendors', validate(vendorFilterSchema), adminController.getVendors);
+
+/**
+ * 5. API to list all vendor profiles which are submitted ✅
+ * GET /api/admin/vendors/submissions
+ * Query params: page, limit, verified
+ */
+router.get('/vendors/submissions', adminController.getVendorSubmissions);
 
 /**
  * GET /api/admin/vendors/stats
@@ -38,11 +45,32 @@ router.get('/vendors', validate(vendorFilterSchema), adminController.getVendors)
  */
 router.get('/vendors/stats', adminController.getVendorStats);
 
-// ===== NEW BUYER MANAGEMENT ROUTES =====
+/**
+ * GET /api/admin/vendors/:vendorId
+ * Get single vendor details with products and inquiries
+ */
+router.get('/vendors/:vendorId', adminController.getVendorDetails);
 
 /**
+ * 6. API to verify the vendor business profile ✅
+ * PUT /api/admin/vendors/:vendorId/verify
+ * Body: { verified: boolean }
+ */
+router.put('/vendors/:vendorId/verify', validate(vendorVerificationSchema), adminController.verifyVendor);
+
+/**
+ * PUT /api/admin/vendors/bulk-verify
+ * Bulk verify/unverify multiple vendors
+ * Body: { vendorIds: string[], verified: boolean }
+ */
+router.put('/vendors/bulk-verify', validate(bulkVerifySchema), adminController.bulkVerifyVendors);
+
+// ===== BUYER MANAGEMENT ROUTES =====
+
+/**
+ * 3. API to list buyers on the platform ✅
+ * 4. API to search and filter buyers ✅
  * GET /api/admin/buyers
- * Get buyers with search and filtering
  * Query params: page, limit, search, sortBy, sortOrder
  */
 router.get('/buyers', validate(buyerFilterSchema), adminController.getBuyers);
@@ -53,16 +81,13 @@ router.get('/buyers', validate(buyerFilterSchema), adminController.getBuyers);
  */
 router.get('/buyers/stats', adminController.getBuyerStats);
 
-// ===== BULK ACTIONS ROUTES =====
-
 /**
- * PUT /api/admin/vendors/bulk-verify
- * Bulk verify/unverify multiple vendors
- * Body: { vendorIds: string[], verified: boolean }
+ * GET /api/admin/buyers/:buyerId
+ * Get single buyer details with inquiry history
  */
-router.put('/vendors/bulk-verify', validate(bulkVerifySchema), adminController.bulkVerifyVendors);
+router.get('/buyers/:buyerId', adminController.getBuyerDetails);
 
-// ===== UNIVERSAL SEARCH ROUTE =====
+// ===== UTILITY ROUTES =====
 
 /**
  * GET /api/admin/search
