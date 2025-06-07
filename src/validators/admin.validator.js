@@ -1,5 +1,3 @@
-// src/validators/admin.validator.js - Simple fix
-
 const { z } = require('zod');
 
 // Vendor filter validation schema - make everything optional with defaults
@@ -22,18 +20,6 @@ const buyerFilterSchema = z.object({
   sortOrder: z.string().optional().default('desc')
 });
 
-// Bulk verify vendors schema (for POST/PUT body validation)
-const bulkVerifySchema = z.object({
-  vendorIds: z.array(z.string().min(1, 'Vendor ID cannot be empty')).min(1, 'At least one vendor ID is required'),
-  verified: z.boolean()
-});
-
-// Universal search schema (for query parameters)
-const universalSearchSchema = z.object({
-  q: z.string().min(2, 'Search term must be at least 2 characters').max(100),
-  limit: z.string().optional().default('5').transform(val => parseInt(val) || 5)
-});
-
 // Vendor verification schema (for POST/PUT body validation)
 const vendorVerificationSchema = z.object({
   verified: z.boolean()
@@ -42,7 +28,5 @@ const vendorVerificationSchema = z.object({
 module.exports = {
   vendorFilterSchema,
   buyerFilterSchema,
-  bulkVerifySchema,
-  universalSearchSchema,
   vendorVerificationSchema
 };

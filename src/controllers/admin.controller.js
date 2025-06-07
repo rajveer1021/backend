@@ -1,13 +1,10 @@
-// src/controllers/admin.controller.js - Enhanced with all vendor and buyer management APIs
-
 const adminService = require('../services/admin.service');
 const asyncHandler = require('../utils/asyncHandler');
 const ApiResponse = require('../utils/ApiResponse');
 const ApiError = require('../utils/ApiError');
-const prisma = require('../config/database'); // Added missing import
+const prisma = require('../config/database');
 
 class AdminController {
-  // ===== EXISTING CORE METHODS =====
   
   getAllUsers = asyncHandler(async (req, res) => {
     const { page = 1, limit = 10, accountType } = req.query;
@@ -161,75 +158,6 @@ class AdminController {
     
     res.status(200).json(new ApiResponse(200, result, 'Buyer statistics fetched successfully'));
   });
-
-  // ===== BULK ACTIONS =====
-
-  /**
-   * PUT /api/admin/vendors/bulk-verify - Bulk verify/unverify vendors
-   */
-  bulkVerifyVendors = asyncHandler(async (req, res) => {
-    console.log('🔄 Admin bulk verifying vendors:', req.body);
-
-    const { vendorIds, verified } = req.body;
-
-    if (!vendorIds || !Array.isArray(vendorIds) || vendorIds.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'vendorIds array is required and must not be empty'
-      });
-    }
-
-    if (typeof verified !== 'boolean') {
-      return res.status(400).json({
-        success: false,
-        message: 'verified field is required and must be a boolean'
-      });
-    }
-
-    try {
-      const result = await adminService.bulkVerifyVendors(vendorIds, verified);
-
-      res.status(200).json(new ApiResponse(
-        200, 
-        result, 
-        `${result.updatedCount} vendors ${verified ? 'verified' : 'unverified'} successfully`
-      ));
-    } catch (error) {
-      console.error('❌ Bulk verify error:', error);
-      throw new ApiError(500, 'Failed to bulk update vendor verification status');
-    }
-  });
-
-  /**
-   * GET /api/admin/search - Universal search across users, vendors, and products
-   */
-  universalSearch = asyncHandler(async (req, res) => {
-    console.log('🔍 Admin universal search:', req.query);
-
-    const { q: searchTerm, limit = 5 } = req.query;
-
-    if (!searchTerm || searchTerm.trim().length < 2) {
-      return res.status(400).json({
-        success: false,
-        message: 'Search term must be at least 2 characters long'
-      });
-    }
-
-    try {
-      const result = await adminService.universalSearch(searchTerm.trim(), limit);
-
-      res.status(200).json(new ApiResponse(
-        200, 
-        result, 
-        `Found ${result.totalResults} results for "${result.searchTerm}"`
-      ));
-    } catch (error) {
-      console.error('❌ Universal search error:', error);
-      throw new ApiError(500, 'Universal search failed');
-    }
-  });
-
-  // ===== ADDITIONAL UTILITY METHODS =====
 
   /**
    * GET /api/admin/vendors/:vendorId - Get single vendor details

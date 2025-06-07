@@ -1,11 +1,7 @@
-// src/services/admin.service.js - Enhanced with all vendor and buyer management APIs
-
 const prisma = require("../config/database");
 const ApiError = require("../utils/ApiError");
 
 class AdminService {
-  // ===== EXISTING METHODS (Enhanced) =====
-  
   /**
    * Get all users with pagination and filtering
    */
@@ -13,7 +9,7 @@ class AdminService {
     const skip = (page - 1) * limit;
 
     const where = {};
-    if (accountType && accountType !== 'all') {
+    if (accountType && accountType !== "all") {
       where.accountType = accountType;
     }
 
@@ -63,7 +59,12 @@ class AdminService {
   async getVendorSubmissions(page = 1, limit = 10, verified) {
     const skip = (page - 1) * limit;
 
-    const where = {};
+    const where = {
+      verified: false,
+      profileStep: 3,
+      verificationType: "manual",
+    };
+
     if (verified !== undefined) {
       where.verified = verified === "true";
     }
@@ -90,10 +91,10 @@ class AdminService {
     ]);
 
     // Format vendors with additional info
-    const formattedVendors = vendors.map(vendor => ({
+    const formattedVendors = vendors.map((vendor) => ({
       ...vendor,
       verificationStatus: this.getVerificationStatusLabel(vendor),
-      fullName: `${vendor.user.firstName} ${vendor.user.lastName}`.trim()
+      fullName: `${vendor.user.firstName} ${vendor.user.lastName}`.trim(),
     }));
 
     return {
@@ -147,7 +148,7 @@ class AdminService {
     return {
       ...updatedVendor,
       verificationStatus: this.getVerificationStatusLabel(updatedVendor),
-      message: `Vendor ${verified ? 'verified' : 'unverified'} successfully`
+      message: `Vendor ${verified ? "verified" : "unverified"} successfully`,
     };
   }
 
@@ -207,7 +208,7 @@ class AdminService {
       totalBuyers,
       googleUsers,
       activeProducts,
-      openInquiries
+      openInquiries,
     ] = await Promise.all([
       prisma.user.count(),
       prisma.vendor.count(),
@@ -215,10 +216,10 @@ class AdminService {
       prisma.inquiry.count(),
       prisma.vendor.count({ where: { verified: true } }),
       prisma.vendor.count({ where: { verified: false } }),
-      prisma.user.count({ where: { accountType: 'BUYER' } }),
+      prisma.user.count({ where: { accountType: "BUYER" } }),
       prisma.user.count({ where: { googleId: { not: null } } }),
       prisma.product.count({ where: { isActive: true, stock: { gt: 0 } } }),
-      prisma.inquiry.count({ where: { status: 'OPEN' } })
+      prisma.inquiry.count({ where: { status: "OPEN" } }),
     ]);
 
     return {
@@ -234,12 +235,13 @@ class AdminService {
       openInquiries,
       stats: {
         userGrowth: await this.getUserGrowthStats(),
-        vendorVerificationRate: totalVendors > 0 ? Math.round((verifiedVendors / totalVendors) * 100) : 0
-      }
+        vendorVerificationRate:
+          totalVendors > 0
+            ? Math.round((verifiedVendors / totalVendors) * 100)
+            : 0,
+      },
     };
   }
-
-  // ===== ENHANCED VENDOR MANAGEMENT =====
 
   /**
    * Get vendors with advanced search and filtering
@@ -266,7 +268,7 @@ class AdminService {
     // Search filter - search in user name and email, and vendor business name
     if (search && search.trim()) {
       const searchTerm = search.trim();
-      
+
       // Search across user and vendor fields
       where.OR = [
         {
@@ -308,16 +310,17 @@ class AdminService {
     }
 
     // Verification status filter
-    if (verificationStatus && verificationStatus !== "all" && verificationStatus !== "") {
+    if (
+      verificationStatus &&
+      verificationStatus !== "all" &&
+      verificationStatus !== ""
+    ) {
       switch (verificationStatus) {
         case "gst_verified":
           where.AND = [{ verified: true }, { verificationType: "gst" }];
           break;
         case "manually_verified":
-          where.AND = [
-            { verified: true },
-            { verificationType: "manual" },
-          ];
+          where.AND = [{ verified: true }, { verificationType: "manual" }];
           break;
         case "pending":
           where.verified = false;
@@ -373,10 +376,10 @@ class AdminService {
             _count: {
               select: {
                 products: {
-                  where: { isActive: true }
-                }
-              }
-            }
+                  where: { isActive: true },
+                },
+              },
+            },
           },
         }),
         prisma.vendor.count({ where }),
@@ -389,7 +392,7 @@ class AdminService {
         user: {
           ...vendor.user,
           fullName: `${vendor.user.firstName} ${vendor.user.lastName}`.trim(),
-          isGoogleUser: !!vendor.user.googleId
+          isGoogleUser: !!vendor.user.googleId,
         },
         vendorType: vendor.vendorType,
         businessName: vendor.businessName,
@@ -404,8 +407,10 @@ class AdminService {
             vendor.businessAddress2,
             vendor.city,
             vendor.state,
-            vendor.postalCode
-          ].filter(Boolean).join(', ')
+            vendor.postalCode,
+          ]
+            .filter(Boolean)
+            .join(", "),
         },
         businessLogo: vendor.businessLogo,
         verified: vendor.verified,
@@ -414,7 +419,10 @@ class AdminService {
         verificationDetails: {
           gstNumber: vendor.gstNumber,
           idType: vendor.idType,
-          hasDocuments: !!(vendor.gstDocument || (vendor.otherDocuments && vendor.otherDocuments.length > 0))
+          hasDocuments: !!(
+            vendor.gstDocument ||
+            (vendor.otherDocuments && vendor.otherDocuments.length > 0)
+          ),
         },
         profileStep: vendor.profileStep,
         productCount: vendor._count.products,
@@ -441,9 +449,9 @@ class AdminService {
         },
         summary: {
           totalVendors: total,
-          verifiedVendors: formattedVendors.filter(v => v.verified).length,
-          pendingVendors: formattedVendors.filter(v => !v.verified).length,
-        }
+          verifiedVendors: formattedVendors.filter((v) => v.verified).length,
+          pendingVendors: formattedVendors.filter((v) => !v.verified).length,
+        },
       };
     } catch (error) {
       console.error("❌ Error in getVendorsWithFilters:", error);
@@ -541,9 +549,9 @@ class AdminService {
                 createdAt: true,
               },
               orderBy: {
-                createdAt: 'desc'
+                createdAt: "desc",
               },
-              take: 5 // Get last 5 inquiries for summary
+              take: 5, // Get last 5 inquiries for summary
             },
           },
         }),
@@ -556,7 +564,10 @@ class AdminService {
         const activeInquiries = buyer.inquiries.filter(
           (inq) => inq.status === "OPEN"
         ).length;
-        const recentActivity = buyer.inquiries.length > 0 ? buyer.inquiries[0].createdAt : buyer.createdAt;
+        const recentActivity =
+          buyer.inquiries.length > 0
+            ? buyer.inquiries[0].createdAt
+            : buyer.createdAt;
 
         return {
           id: buyer.id,
@@ -594,9 +605,10 @@ class AdminService {
         },
         summary: {
           totalBuyers: total,
-          activeBuyers: formattedBuyers.filter(b => b.inquiryStats.active > 0).length,
-          googleUsers: formattedBuyers.filter(b => b.isGoogleUser).length,
-        }
+          activeBuyers: formattedBuyers.filter((b) => b.inquiryStats.active > 0)
+            .length,
+          googleUsers: formattedBuyers.filter((b) => b.isGoogleUser).length,
+        },
       };
     } catch (error) {
       console.error("❌ Error in getBuyersWithFilters:", error);
@@ -633,14 +645,14 @@ class AdminService {
           by: ["vendorType"],
           _count: { vendorType: true },
           where: {
-            vendorType: { not: null }
-          }
+            vendorType: { not: null },
+          },
         }),
         prisma.vendor.groupBy({
           by: ["verified", "verificationType"],
           _count: { verified: true },
         }),
-        prisma.vendor.count()
+        prisma.vendor.count(),
       ]);
 
       return {
@@ -648,13 +660,13 @@ class AdminService {
         vendorTypes: vendorTypes.map((item) => ({
           type: item.vendorType,
           count: item._count.vendorType,
-          percentage: Math.round((item._count.vendorType / totalVendors) * 100)
+          percentage: Math.round((item._count.vendorType / totalVendors) * 100),
         })),
         verificationStats: verificationStats.map((item) => ({
           verified: item.verified,
           verificationType: item.verificationType,
           count: item._count.verified,
-          percentage: Math.round((item._count.verified / totalVendors) * 100)
+          percentage: Math.round((item._count.verified / totalVendors) * 100),
         })),
       };
     } catch (error) {
@@ -668,31 +680,32 @@ class AdminService {
    */
   async getBuyerFilterStats() {
     try {
-      const [totalBuyers, googleUsers, regularUsers, activeBuyers] = await Promise.all([
-        prisma.user.count({ where: { accountType: "BUYER" } }),
-        prisma.user.count({
-          where: {
-            accountType: "BUYER",
-            googleId: { not: null },
-          },
-        }),
-        prisma.user.count({
-          where: {
-            accountType: "BUYER",
-            googleId: null,
-          },
-        }),
-        prisma.user.count({
-          where: {
-            accountType: "BUYER",
-            inquiries: {
-              some: {
-                status: "OPEN"
-              }
-            }
-          },
-        }),
-      ]);
+      const [totalBuyers, googleUsers, regularUsers, activeBuyers] =
+        await Promise.all([
+          prisma.user.count({ where: { accountType: "BUYER" } }),
+          prisma.user.count({
+            where: {
+              accountType: "BUYER",
+              googleId: { not: null },
+            },
+          }),
+          prisma.user.count({
+            where: {
+              accountType: "BUYER",
+              googleId: null,
+            },
+          }),
+          prisma.user.count({
+            where: {
+              accountType: "BUYER",
+              inquiries: {
+                some: {
+                  status: "OPEN",
+                },
+              },
+            },
+          }),
+        ]);
 
       return {
         total: totalBuyers,
@@ -700,210 +713,17 @@ class AdminService {
         regularUsers,
         activeBuyers,
         statistics: {
-          googleUserPercentage: totalBuyers > 0 ? Math.round((googleUsers / totalBuyers) * 100) : 0,
-          activeBuyerPercentage: totalBuyers > 0 ? Math.round((activeBuyers / totalBuyers) * 100) : 0
-        }
+          googleUserPercentage:
+            totalBuyers > 0 ? Math.round((googleUsers / totalBuyers) * 100) : 0,
+          activeBuyerPercentage:
+            totalBuyers > 0
+              ? Math.round((activeBuyers / totalBuyers) * 100)
+              : 0,
+        },
       };
     } catch (error) {
       console.error("❌ Error in getBuyerFilterStats:", error);
       throw new ApiError(500, "Failed to fetch buyer filter statistics");
-    }
-  }
-
-  /**
-   * Get user growth statistics
-   */
-  async getUserGrowthStats() {
-    try {
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-      const [newUsers, newVendors, newBuyers] = await Promise.all([
-        prisma.user.count({
-          where: {
-            createdAt: { gte: thirtyDaysAgo }
-          }
-        }),
-        prisma.user.count({
-          where: {
-            accountType: "VENDOR",
-            createdAt: { gte: thirtyDaysAgo }
-          }
-        }),
-        prisma.user.count({
-          where: {
-            accountType: "BUYER",
-            createdAt: { gte: thirtyDaysAgo }
-          }
-        }),
-      ]);
-
-      return {
-        last30Days: {
-          newUsers,
-          newVendors,
-          newBuyers
-        }
-      };
-    } catch (error) {
-      console.error("❌ Error in getUserGrowthStats:", error);
-      return {
-        last30Days: {
-          newUsers: 0,
-          newVendors: 0,
-          newBuyers: 0
-        }
-      };
-    }
-  }
-
-  // ===== BULK ACTIONS =====
-
-  /**
-   * Bulk verify/unverify vendors
-   */
-  async bulkVerifyVendors(vendorIds, verified) {
-    try {
-      const result = await prisma.$transaction(
-        vendorIds.map(vendorId => 
-          prisma.vendor.update({
-            where: { id: vendorId },
-            data: { verified },
-            include: {
-              user: {
-                select: {
-                  firstName: true,
-                  lastName: true,
-                  email: true,
-                },
-              },
-            },
-          })
-        )
-      );
-
-      return { 
-        updatedCount: result.length,
-        updatedVendors: result.map(vendor => ({
-          ...vendor,
-          verificationStatus: this.getVerificationStatusLabel(vendor)
-        }))
-      };
-    } catch (error) {
-      console.error('❌ Bulk verify error:', error);
-      throw new ApiError(500, 'Failed to bulk update vendor verification status');
-    }
-  }
-
-  // ===== UNIVERSAL SEARCH =====
-
-  /**
-   * Universal search across users, vendors, and products
-   */
-  async universalSearch(searchTerm, limit = 5) {
-    try {
-      const search = searchTerm.trim();
-      const searchLimit = parseInt(limit);
-
-      const [users, vendors, products] = await Promise.all([
-        // Search users
-        prisma.user.findMany({
-          where: {
-            OR: [
-              { firstName: { contains: search, mode: 'insensitive' } },
-              { lastName: { contains: search, mode: 'insensitive' } },
-              { email: { contains: search, mode: 'insensitive' } }
-            ]
-          },
-          take: searchLimit,
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-            accountType: true,
-            createdAt: true
-          }
-        }),
-
-        // Search vendors by business name
-        prisma.vendor.findMany({
-          where: {
-            businessName: { contains: search, mode: 'insensitive' }
-          },
-          take: searchLimit,
-          include: {
-            user: {
-              select: {
-                firstName: true,
-                lastName: true,
-                email: true
-              }
-            }
-          }
-        }),
-
-        // Search products
-        prisma.product.findMany({
-          where: {
-            AND: [
-              { isActive: true },
-              {
-                OR: [
-                  { name: { contains: search, mode: 'insensitive' } },
-                  { description: { contains: search, mode: 'insensitive' } }
-                ]
-              }
-            ]
-          },
-          take: searchLimit,
-          include: {
-            vendor: {
-              include: {
-                user: {
-                  select: {
-                    firstName: true,
-                    lastName: true,
-                    email: true
-                  }
-                }
-              }
-            }
-          }
-        })
-      ]);
-
-      const results = {
-        users: users.map(user => ({
-          ...user,
-          type: 'user',
-          display: `${user.firstName} ${user.lastName} (${user.email})`,
-          subtitle: `${user.accountType} - Joined ${user.createdAt.toLocaleDateString()}`
-        })),
-        vendors: vendors.map(vendor => ({
-          ...vendor,
-          type: 'vendor',
-          display: `${vendor.businessName}`,
-          subtitle: `${vendor.user.firstName} ${vendor.user.lastName} - ${vendor.user.email}`
-        })),
-        products: products.map(product => ({
-          ...product,
-          type: 'product',
-          display: `${product.name}`,
-          subtitle: `by ${product.vendor.user.firstName} ${product.vendor.user.lastName} - ₹${product.price}`
-        }))
-      };
-
-      const totalResults = users.length + vendors.length + products.length;
-
-      return { 
-        results, 
-        totalResults,
-        searchTerm: search
-      };
-    } catch (error) {
-      console.error('❌ Universal search error:', error);
-      throw new ApiError(500, 'Universal search failed');
     }
   }
 }

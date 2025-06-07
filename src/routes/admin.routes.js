@@ -1,11 +1,8 @@
-// src/routes/admin.routes.js - Quick fix: Remove validation for GET routes
-
 const express = require('express');
 const adminController = require('../controllers/admin.controller');
 const { protect, isAdmin } = require('../middleware/auth.middleware');
 const validate = require('../middleware/validation.middleware');
 const { 
-  bulkVerifySchema,
   vendorVerificationSchema
 } = require('../validators/admin.validator');
 
@@ -51,12 +48,6 @@ router.get('/vendors/:vendorId', adminController.getVendorDetails);
  */
 router.put('/vendors/:vendorId/verify', validate(vendorVerificationSchema), adminController.verifyVendor);
 
-/**
- * PUT /api/admin/vendors/bulk-verify
- * Body: { vendorIds: string[], verified: boolean }
- */
-router.put('/vendors/bulk-verify', validate(bulkVerifySchema), adminController.bulkVerifyVendors);
-
 // ===== BUYER MANAGEMENT ROUTES =====
 
 /**
@@ -75,12 +66,5 @@ router.get('/buyers/stats', adminController.getBuyerStats);
  * GET /api/admin/buyers/:buyerId
  */
 router.get('/buyers/:buyerId', adminController.getBuyerDetails);
-
-// ===== UTILITY ROUTES =====
-
-/**
- * GET /api/admin/search - REMOVED VALIDATION FOR NOW
- */
-router.get('/search', adminController.universalSearch);
 
 module.exports = router;
