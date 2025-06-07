@@ -1,14 +1,11 @@
-// src/routes/admin.routes.js - Enhanced with vendor and buyer management
+// src/routes/admin.routes.js - Quick fix: Remove validation for GET routes
 
 const express = require('express');
 const adminController = require('../controllers/admin.controller');
 const { protect, isAdmin } = require('../middleware/auth.middleware');
 const validate = require('../middleware/validation.middleware');
 const { 
-  vendorFilterSchema, 
-  buyerFilterSchema, 
   bulkVerifySchema,
-  universalSearchSchema,
   vendorVerificationSchema
 } = require('../validators/admin.validator');
 
@@ -27,27 +24,23 @@ router.get('/dashboard/stats', adminController.getDashboardStats);
 /**
  * 1. API to list all vendors on the platform ✅
  * 2. API to search and filter vendors ✅
- * GET /api/admin/vendors
- * Query params: page, limit, search, vendorType, verificationStatus, sortBy, sortOrder
+ * GET /api/admin/vendors - REMOVED VALIDATION FOR NOW
  */
-router.get('/vendors', validate(vendorFilterSchema), adminController.getVendors);
+router.get('/vendors', adminController.getVendors);
 
 /**
  * 5. API to list all vendor profiles which are submitted ✅
  * GET /api/admin/vendors/submissions
- * Query params: page, limit, verified
  */
 router.get('/vendors/submissions', adminController.getVendorSubmissions);
 
 /**
  * GET /api/admin/vendors/stats
- * Get vendor filter statistics (counts by type, verification status, etc.)
  */
 router.get('/vendors/stats', adminController.getVendorStats);
 
 /**
  * GET /api/admin/vendors/:vendorId
- * Get single vendor details with products and inquiries
  */
 router.get('/vendors/:vendorId', adminController.getVendorDetails);
 
@@ -60,7 +53,6 @@ router.put('/vendors/:vendorId/verify', validate(vendorVerificationSchema), admi
 
 /**
  * PUT /api/admin/vendors/bulk-verify
- * Bulk verify/unverify multiple vendors
  * Body: { vendorIds: string[], verified: boolean }
  */
 router.put('/vendors/bulk-verify', validate(bulkVerifySchema), adminController.bulkVerifyVendors);
@@ -70,30 +62,25 @@ router.put('/vendors/bulk-verify', validate(bulkVerifySchema), adminController.b
 /**
  * 3. API to list buyers on the platform ✅
  * 4. API to search and filter buyers ✅
- * GET /api/admin/buyers
- * Query params: page, limit, search, sortBy, sortOrder
+ * GET /api/admin/buyers - REMOVED VALIDATION FOR NOW
  */
-router.get('/buyers', validate(buyerFilterSchema), adminController.getBuyers);
+router.get('/buyers', adminController.getBuyers);
 
 /**
  * GET /api/admin/buyers/stats
- * Get buyer statistics (total count, Google vs regular users, etc.)
  */
 router.get('/buyers/stats', adminController.getBuyerStats);
 
 /**
  * GET /api/admin/buyers/:buyerId
- * Get single buyer details with inquiry history
  */
 router.get('/buyers/:buyerId', adminController.getBuyerDetails);
 
 // ===== UTILITY ROUTES =====
 
 /**
- * GET /api/admin/search
- * Universal search across users, vendors, and products
- * Query params: q (search term), limit
+ * GET /api/admin/search - REMOVED VALIDATION FOR NOW
  */
-router.get('/search', validate(universalSearchSchema), adminController.universalSearch);
+router.get('/search', adminController.universalSearch);
 
 module.exports = router;
