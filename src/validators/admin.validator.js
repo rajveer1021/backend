@@ -57,10 +57,31 @@ const dashboardQuerySchema = z.object({
   dateRange: z.enum(['7d', '30d', '90d', 'all']).optional().default('30d')
 });
 
+const userToggleStatusSchema = z.object({
+  isActive: z.boolean({
+    required_error: "isActive field is required",
+    invalid_type_error: "isActive must be a boolean value"
+  }),
+  reason: z.string()
+    .min(1, "Reason is required when deactivating a user")
+    .max(500, "Reason must be less than 500 characters")
+    .optional()
+}).refine((data) => {
+  // If deactivating (isActive = false), reason should be provided
+  if (data.isActive === false && (!data.reason || data.reason.trim() === '')) {
+    return false;
+  }
+  return true;
+}, {
+  message: "Reason is required when deactivating a user",
+  path: ["reason"]
+});
+
 module.exports = {
   vendorFilterSchema,
   buyerFilterSchema,
   vendorVerificationSchema,
   vendorSubmissionQuerySchema,
-  dashboardQuerySchema
+  dashboardQuerySchema,
+  userToggleStatusSchema,
 };
