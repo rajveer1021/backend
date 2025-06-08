@@ -41,19 +41,30 @@ class AdminController {
     console.log("🔍 Verify vendor request:", {
       vendorId: req.params.vendorId,
       verified,
-      rejectionReason: rejectionReason ? rejectionReason.substring(0, 50) + "..." : null
+      rejectionReason: rejectionReason
+        ? rejectionReason.substring(0, 50) + "..."
+        : null,
     });
 
     // Validation for rejection reason
     if (verified === false) {
-      if (!rejectionReason || rejectionReason.trim() === '') {
-        throw new ApiError(400, "Rejection reason is required when rejecting a vendor");
+      if (!rejectionReason || rejectionReason.trim() === "") {
+        throw new ApiError(
+          400,
+          "Rejection reason is required when rejecting a vendor"
+        );
       }
       if (rejectionReason.trim().length < 10) {
-        throw new ApiError(400, "Rejection reason must be at least 10 characters long");
+        throw new ApiError(
+          400,
+          "Rejection reason must be at least 10 characters long"
+        );
       }
       if (rejectionReason.length > 500) {
-        throw new ApiError(400, "Rejection reason must be less than 500 characters");
+        throw new ApiError(
+          400,
+          "Rejection reason must be less than 500 characters"
+        );
       }
     }
 
@@ -64,15 +75,11 @@ class AdminController {
         rejectionReason?.trim()
       );
 
-      const message = verified 
-        ? "Vendor verified successfully" 
+      const message = verified
+        ? "Vendor verified successfully"
         : `Vendor rejected successfully. Reason: ${rejectionReason?.trim()}`;
 
-      res
-        .status(200)
-        .json(
-          new ApiResponse(200, result, message)
-        );
+      res.status(200).json(new ApiResponse(200, result, message));
     } catch (error) {
       console.error("❌ Verify vendor error:", error);
       throw error instanceof ApiError
@@ -509,7 +516,10 @@ class AdminController {
    * GET /api/admin/vendors/:vendorId/rejection-details
    */
   getVendorRejectionDetails = asyncHandler(async (req, res) => {
-    console.log("🔍 Admin fetching vendor rejection details:", req.params.vendorId);
+    console.log(
+      "🔍 Admin fetching vendor rejection details:",
+      req.params.vendorId
+    );
 
     try {
       const vendor = await prisma.vendor.findUnique({
@@ -615,18 +625,17 @@ class AdminController {
         },
       });
 
-      res
-        .status(200)
-        .json(
-          new ApiResponse(
-            200,
-            {
-              ...updatedVendor,
-              verificationStatusLabel: adminService.getVerificationStatusLabel(updatedVendor),
-            },
-            "Vendor rejection cleared successfully. Vendor can now resubmit for verification."
-          )
-        );
+      res.status(200).json(
+        new ApiResponse(
+          200,
+          {
+            ...updatedVendor,
+            verificationStatusLabel:
+              adminService.getVerificationStatusLabel(updatedVendor),
+          },
+          "Vendor rejection cleared successfully. Vendor can now resubmit for verification."
+        )
+      );
     } catch (error) {
       console.error("❌ Clear vendor rejection error:", error);
       throw error instanceof ApiError
@@ -672,7 +681,11 @@ class AdminController {
           where: {
             verificationStatus: "rejected",
             rejectedAt: {
-              gte: new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1),
+              gte: new Date(
+                new Date().getFullYear(),
+                new Date().getMonth() - 1,
+                1
+              ),
               lt: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
             },
           },
@@ -715,25 +728,32 @@ class AdminController {
 
       // Process rejection reasons to find common patterns
       const reasonFrequency = {};
-      topRejectionReasons.forEach(vendor => {
+      topRejectionReasons.forEach((vendor) => {
         const reason = vendor.rejectionReason?.toLowerCase().trim();
         if (reason) {
           // Simple keyword extraction - you can make this more sophisticated
-          const keywords = reason.split(' ').filter(word => word.length > 3);
-          keywords.forEach(keyword => {
+          const keywords = reason.split(" ").filter((word) => word.length > 3);
+          keywords.forEach((keyword) => {
             reasonFrequency[keyword] = (reasonFrequency[keyword] || 0) + 1;
           });
         }
       });
 
       const topReasons = Object.entries(reasonFrequency)
-        .sort(([,a], [,b]) => b - a)
+        .sort(([, a], [, b]) => b - a)
         .slice(0, 10)
         .map(([reason, count]) => ({ reason, count }));
 
-      const rejectionGrowth = rejectionsLastMonth > 0 
-        ? Math.round(((rejectionsThisMonth - rejectionsLastMonth) / rejectionsLastMonth) * 100)
-        : rejectionsThisMonth > 0 ? 100 : 0;
+      const rejectionGrowth =
+        rejectionsLastMonth > 0
+          ? Math.round(
+              ((rejectionsThisMonth - rejectionsLastMonth) /
+                rejectionsLastMonth) *
+                100
+            )
+          : rejectionsThisMonth > 0
+          ? 100
+          : 0;
 
       const stats = {
         totalRejected,
@@ -741,7 +761,7 @@ class AdminController {
         rejectionsLastMonth,
         rejectionGrowth,
         topRejectionReasons: topReasons,
-        recentRejections: recentRejections.map(vendor => ({
+        recentRejections: recentRejections.map((vendor) => ({
           id: vendor.id,
           vendorName: `${vendor.user.firstName} ${vendor.user.lastName}`.trim(),
           vendorEmail: vendor.user.email,
@@ -754,7 +774,11 @@ class AdminController {
       res
         .status(200)
         .json(
-          new ApiResponse(200, stats, "Rejection statistics fetched successfully")
+          new ApiResponse(
+            200,
+            stats,
+            "Rejection statistics fetched successfully"
+          )
         );
     } catch (error) {
       console.error("❌ Error fetching rejection stats:", error);
@@ -773,6 +797,215 @@ class AdminController {
       .json(
         new ApiResponse(200, result, "Dashboard stats fetched successfully")
       );
+  });
+
+  /**
+   * Toggle user activation status (activate/deactivate)
+   * PUT /api/admin/users/:userId/toggle-status
+   */
+  toggleUserStatus = asyncHandler(async (req, res) => {
+    console.log("🔄 Admin toggling user status:", req.params.userId);
+
+    try {
+      const { userId } = req.params;
+      const { isActive, reason } = req.body;
+
+      // Validate input
+      if (typeof isActive !== "boolean") {
+        throw new ApiError(
+          400,
+          "isActive field is required and must be a boolean"
+        );
+      }
+
+      // Check if user exists
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        include: {
+          vendor: {
+            select: {
+              id: true,
+              businessName: true,
+              verified: true,
+            },
+          },
+        },
+      });
+
+      if (!user) {
+        throw new ApiError(404, "User not found");
+      }
+
+      // Prevent deactivating admin users
+      if (user.accountType === "ADMIN" && !isActive) {
+        throw new ApiError(400, "Cannot deactivate admin users");
+      }
+
+      // Update user status
+      const updatedUser = await prisma.user.update({
+        where: { id: userId },
+        data: {
+          isActive,
+          updatedAt: new Date(),
+        },
+        include: {
+          vendor: {
+            select: {
+              id: true,
+              businessName: true,
+              verified: true,
+            },
+          },
+        },
+      });
+
+      const action = isActive ? "activated" : "deactivated";
+      const userType = user.accountType.toLowerCase();
+
+      console.log(`✅ User ${action} successfully`);
+
+      res.status(200).json(
+        new ApiResponse(
+          200,
+          {
+            user: {
+              id: updatedUser.id,
+              firstName: updatedUser.firstName,
+              lastName: updatedUser.lastName,
+              email: updatedUser.email,
+              accountType: updatedUser.accountType,
+              isActive: updatedUser.isActive,
+              vendor: updatedUser.vendor,
+              updatedAt: updatedUser.updatedAt,
+            },
+            action,
+            reason: reason || null,
+          },
+          `${userType} ${action} successfully`
+        )
+      );
+    } catch (error) {
+      console.error("❌ Toggle user status error:", error);
+      throw error instanceof ApiError
+        ? error
+        : new ApiError(500, "Failed to toggle user status");
+    }
+  });
+
+  getUserActivationStats = asyncHandler(async (req, res) => {
+    console.log("📊 Admin fetching user activation statistics");
+
+    try {
+      const [
+        totalUsers,
+        activeUsers,
+        inactiveUsers,
+        activeBuyers,
+        inactiveBuyers,
+        activeVendors,
+        inactiveVendors,
+        recentDeactivations,
+      ] = await Promise.all([
+        prisma.user.count(),
+        prisma.user.count({ where: { isActive: true } }),
+        prisma.user.count({ where: { isActive: false } }),
+        prisma.user.count({
+          where: {
+            accountType: "BUYER",
+            isActive: true,
+          },
+        }),
+        prisma.user.count({
+          where: {
+            accountType: "BUYER",
+            isActive: false,
+          },
+        }),
+        prisma.user.count({
+          where: {
+            accountType: "VENDOR",
+            isActive: true,
+          },
+        }),
+        prisma.user.count({
+          where: {
+            accountType: "VENDOR",
+            isActive: false,
+          },
+        }),
+        prisma.user.findMany({
+          where: {
+            isActive: false,
+            updatedAt: {
+              gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), // Last 7 days
+            },
+          },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            accountType: true,
+            updatedAt: true,
+          },
+          orderBy: { updatedAt: "desc" },
+          take: 10,
+        }),
+      ]);
+
+      const stats = {
+        total: totalUsers,
+        active: activeUsers,
+        inactive: inactiveUsers,
+        activationRate:
+          totalUsers > 0 ? Math.round((activeUsers / totalUsers) * 100) : 0,
+        byAccountType: {
+          buyers: {
+            active: activeBuyers,
+            inactive: inactiveBuyers,
+            total: activeBuyers + inactiveBuyers,
+            activationRate:
+              activeBuyers + inactiveBuyers > 0
+                ? Math.round(
+                    (activeBuyers / (activeBuyers + inactiveBuyers)) * 100
+                  )
+                : 0,
+          },
+          vendors: {
+            active: activeVendors,
+            inactive: inactiveVendors,
+            total: activeVendors + inactiveVendors,
+            activationRate:
+              activeVendors + inactiveVendors > 0
+                ? Math.round(
+                    (activeVendors / (activeVendors + inactiveVendors)) * 100
+                  )
+                : 0,
+          },
+        },
+        recentDeactivations: recentDeactivations.map((user) => ({
+          id: user.id,
+          name: `${user.firstName} ${user.lastName}`,
+          email: user.email,
+          accountType: user.accountType,
+          deactivatedAt: user.updatedAt,
+        })),
+        generatedAt: new Date().toISOString(),
+      };
+
+      res
+        .status(200)
+        .json(
+          new ApiResponse(
+            200,
+            stats,
+            "User activation statistics fetched successfully"
+          )
+        );
+    } catch (error) {
+      console.error("❌ Error fetching user activation stats:", error);
+      throw new ApiError(500, "Failed to fetch user activation statistics");
+    }
   });
 }
 

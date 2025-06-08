@@ -71,7 +71,7 @@ class AdminService {
         where.verified = false;
         where.OR = [
           { verificationStatus: null },
-          { verificationStatus: "pending" }
+          { verificationStatus: "pending" },
         ];
       } else if (verified === "rejected") {
         where.verified = false;
@@ -80,7 +80,7 @@ class AdminService {
         where.verified = false;
         where.OR = [
           { verificationStatus: null },
-          { verificationStatus: "pending" }
+          { verificationStatus: "pending" },
         ];
         where.rejectionReason = null;
       }
@@ -290,26 +290,26 @@ class AdminService {
         }),
 
         // Enhanced verification metrics
-        prisma.vendor.count({ 
-          where: { 
+        prisma.vendor.count({
+          where: {
             verified: true,
-            verificationStatus: "verified" 
-          } 
+            verificationStatus: "verified",
+          },
         }),
-        prisma.vendor.count({ 
-          where: { 
+        prisma.vendor.count({
+          where: {
             verified: false,
-            verificationStatus: "rejected" 
-          } 
+            verificationStatus: "rejected",
+          },
         }),
-        prisma.vendor.count({ 
-          where: { 
+        prisma.vendor.count({
+          where: {
             verified: false,
             OR: [
               { verificationStatus: null },
-              { verificationStatus: "pending" }
-            ]
-          } 
+              { verificationStatus: "pending" },
+            ],
+          },
         }),
         prisma.product.count({ where: { isActive: true, stock: { gt: 0 } } }),
         prisma.inquiry.count({
@@ -419,30 +419,30 @@ class AdminService {
         respondedInquiries,
         closedInquiries,
       ] = await Promise.all([
-        prisma.vendor.count({ 
-          where: { 
+        prisma.vendor.count({
+          where: {
             verified: false,
             OR: [
               { verificationStatus: null },
-              { verificationStatus: "pending" }
-            ]
-          } 
+              { verificationStatus: "pending" },
+            ],
+          },
         }),
-        prisma.vendor.count({ 
-          where: { 
+        prisma.vendor.count({
+          where: {
             verified: false,
-            verificationStatus: "rejected" 
-          } 
+            verificationStatus: "rejected",
+          },
         }),
         prisma.inquiry.count({ where: { status: "OPEN" } }),
         prisma.product.count({ where: { isActive: true, stock: { gt: 0 } } }),
         prisma.product.count({ where: { isActive: true, stock: 0 } }),
         prisma.vendor.count(),
-        prisma.vendor.count({ 
-          where: { 
+        prisma.vendor.count({
+          where: {
             verified: true,
-            verificationStatus: "verified" 
-          } 
+            verificationStatus: "verified",
+          },
         }),
         prisma.inquiry.count(),
         prisma.inquiry.count({ where: { status: "RESPONDED" } }),
@@ -472,7 +472,12 @@ class AdminService {
         },
         rejectedVendors: {
           value: rejectedVendors,
-          priority: rejectedVendors > 5 ? "high" : rejectedVendors > 2 ? "medium" : "low",
+          priority:
+            rejectedVendors > 5
+              ? "high"
+              : rejectedVendors > 2
+              ? "medium"
+              : "low",
         },
         openInquiries: {
           value: openInquiries,
@@ -813,23 +818,23 @@ class AdminService {
       switch (verificationStatus) {
         case "gst_verified":
           where.AND = [
-            { verified: true }, 
+            { verified: true },
             { verificationType: "gst" },
-            { verificationStatus: "verified" }
+            { verificationStatus: "verified" },
           ];
           break;
         case "manually_verified":
           where.AND = [
-            { verified: true }, 
+            { verified: true },
             { verificationType: "manual" },
-            { verificationStatus: "verified" }
+            { verificationStatus: "verified" },
           ];
           break;
         case "pending":
           where.verified = false;
           where.OR = [
             { verificationStatus: null },
-            { verificationStatus: "pending" }
+            { verificationStatus: "pending" },
           ];
           break;
         case "verified":
@@ -974,8 +979,12 @@ class AdminService {
         summary: {
           totalVendors: total,
           verifiedVendors: formattedVendors.filter((v) => v.verified).length,
-          pendingVendors: formattedVendors.filter((v) => !v.verified && v.verificationStatus !== "rejected").length,
-          rejectedVendors: formattedVendors.filter((v) => v.verificationStatus === "rejected").length,
+          pendingVendors: formattedVendors.filter(
+            (v) => !v.verified && v.verificationStatus !== "rejected"
+          ).length,
+          rejectedVendors: formattedVendors.filter(
+            (v) => v.verificationStatus === "rejected"
+          ).length,
         },
       };
     } catch (error) {
@@ -1258,26 +1267,26 @@ class AdminService {
         prisma.vendor.count(),
         prisma.product.count({ where: { isActive: true } }),
         prisma.inquiry.count(),
-        prisma.vendor.count({ 
-          where: { 
+        prisma.vendor.count({
+          where: {
             verified: true,
-            verificationStatus: "verified" 
-          } 
+            verificationStatus: "verified",
+          },
         }),
-        prisma.vendor.count({ 
-          where: { 
+        prisma.vendor.count({
+          where: {
             verified: false,
             OR: [
               { verificationStatus: null },
-              { verificationStatus: "pending" }
-            ]
-          } 
+              { verificationStatus: "pending" },
+            ],
+          },
         }),
-        prisma.vendor.count({ 
-          where: { 
+        prisma.vendor.count({
+          where: {
             verified: false,
-            verificationStatus: "rejected" 
-          } 
+            verificationStatus: "rejected",
+          },
         }),
         prisma.user.count({ where: { accountType: "BUYER" } }),
         prisma.user.count({ where: { googleId: { not: null } } }),
@@ -1307,6 +1316,97 @@ class AdminService {
     } catch (error) {
       console.error("❌ Error in getDashboardStats:", error);
       throw new ApiError(500, "Failed to fetch dashboard stats");
+    }
+  }
+
+  async toggleUserStatus(userId, isActive, reason = null) {
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        include: {
+          vendor: true,
+        },
+      });
+
+      if (!user) {
+        throw new ApiError(404, "User not found");
+      }
+
+      // Prevent deactivating admin users
+      if (user.accountType === "ADMIN" && !isActive) {
+        throw new ApiError(400, "Cannot deactivate admin users");
+      }
+
+      const updatedUser = await prisma.user.update({
+        where: { id: userId },
+        data: {
+          isActive,
+          updatedAt: new Date(),
+        },
+        include: {
+          vendor: {
+            select: {
+              id: true,
+              businessName: true,
+              verified: true,
+            },
+          },
+        },
+      });
+
+      return {
+        user: updatedUser,
+        action: isActive ? "activated" : "deactivated",
+        reason,
+      };
+    } catch (error) {
+      console.error("❌ Toggle user status service error:", error);
+      throw error instanceof ApiError
+        ? error
+        : new ApiError(500, "Failed to toggle user status");
+    }
+  }
+
+  /**
+   * Get user activation statistics
+   */
+  async getUserActivationStats() {
+    try {
+      const [totalUsers, activeUsers, inactiveUsers, usersByType] =
+        await Promise.all([
+          prisma.user.count(),
+          prisma.user.count({ where: { isActive: true } }),
+          prisma.user.count({ where: { isActive: false } }),
+          prisma.user.groupBy({
+            by: ["accountType", "isActive"],
+            _count: {
+              id: true,
+            },
+          }),
+        ]);
+
+      // Process user stats by account type
+      const statsByType = {};
+      usersByType.forEach((stat) => {
+        if (!statsByType[stat.accountType]) {
+          statsByType[stat.accountType] = { active: 0, inactive: 0 };
+        }
+        statsByType[stat.accountType][stat.isActive ? "active" : "inactive"] =
+          stat._count.id;
+      });
+
+      return {
+        total: totalUsers,
+        active: activeUsers,
+        inactive: inactiveUsers,
+        activationRate:
+          totalUsers > 0 ? Math.round((activeUsers / totalUsers) * 100) : 0,
+        byAccountType: statsByType,
+        generatedAt: new Date().toISOString(),
+      };
+    } catch (error) {
+      console.error("❌ Get user activation stats service error:", error);
+      throw new ApiError(500, "Failed to fetch user activation statistics");
     }
   }
 }

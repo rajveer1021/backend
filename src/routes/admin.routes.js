@@ -122,4 +122,7 @@ router.get('/buyers/:buyerId', adminController.getBuyerDetails);
 // Keep legacy dashboard route for backward compatibility
 router.get('/dashboard/stats', adminController.getDashboardStats);
 
+router.put('/users/:userId/toggle-status', adminController.toggleUserStatus);
+router.get('/users/activation-stats', adminController.getUserActivationStats);
+
 module.exports = router;
