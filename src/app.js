@@ -44,7 +44,7 @@ app.use('/api/products', productRoutes);
 app.use('/api/inquiries', inquiryRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/dashboard', dashboardRoutes);
-app.use('/api/subscription', subscriptionRoutes)
+app.use('/api/subscriptions', subscriptionRoutes)
 
 // Health check
 app.get('/health', (req, res) => {

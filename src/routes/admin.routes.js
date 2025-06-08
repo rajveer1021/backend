@@ -14,7 +14,6 @@ router.use(protect, isAdmin);
 // ===== CORE ADMIN ROUTES =====
 router.get('/users', adminController.getAllUsers);
 router.get('/products', adminController.getAllProducts);
-router.get('/dashboard/stats', adminController.getDashboardStats);
 
 // ===== VENDOR MANAGEMENT ROUTES =====
 
@@ -66,5 +65,40 @@ router.get('/buyers/stats', adminController.getBuyerStats);
  * GET /api/admin/buyers/:buyerId
  */
 router.get('/buyers/:buyerId', adminController.getBuyerDetails);
+
+
+/**
+ * GET /api/admin/dashboard/kpis - Get comprehensive dashboard KPIs and metrics
+ * Returns detailed KPIs including growth trends, distributions, and insights
+ */
+router.get('/dashboard/kpis', adminController.getDashboardKPIs);
+
+/**
+ * GET /api/admin/dashboard/summary - Get quick dashboard summary
+ * Returns essential metrics for dashboard overview
+ */
+router.get('/dashboard/summary', adminController.getDashboardSummary);
+
+/**
+ * GET /api/admin/dashboard/activities - Get recent platform activities
+ * Returns timeline of recent user registrations, verifications, etc.
+ */
+router.get('/dashboard/activities', adminController.getRecentActivities);
+
+/**
+ * GET /api/admin/dashboard/daily-stats - Get daily statistics for charts
+ * Query parameters:
+ * - days: Number of days to fetch (default: 30)
+ */
+router.get('/dashboard/daily-stats', adminController.getDailyStats);
+
+/**
+ * GET /api/admin/dashboard/alerts - Get system alerts and notifications
+ * Returns alerts for pending actions, low performance indicators, etc.
+ */
+router.get('/dashboard/alerts', adminController.getDashboardAlerts);
+
+// Keep existing dashboard route for backward compatibility
+router.get('/dashboard/stats', adminController.getDashboardStats);
 
 module.exports = router;
