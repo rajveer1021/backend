@@ -69,6 +69,7 @@ model Vendor {
   
   otherDocuments      String[]    @map("other_documents")
   verified            Boolean     @default(false)
+  verificationStatus  String?     @map("verification_status")
   profileStep         Int         @default(1) @map("profile_step")
   createdAt           DateTime    @default(now()) @map("created_at")
   updatedAt           DateTime    @updatedAt @map("updated_at")

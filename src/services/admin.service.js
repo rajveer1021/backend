@@ -58,13 +58,25 @@ class AdminService {
     const skip = (page - 1) * limit;
 
     const where = {
-      verified: false,
-      profileStep: 3,
-      verificationType: "manual",
+      profileStep: 3, // Only vendors who completed all steps
     };
 
+    // Filter by verification status if specified
     if (verified !== undefined) {
-      where.verified = verified === "true";
+      if (verified === "true") {
+        where.verified = true;
+      } else if (verified === "false") {
+        where.verified = false;
+      } else if (verified === "rejected") {
+        where.OR = [
+          { verificationStatus: "rejected" },
+          { rejectionReason: { not: null } },
+        ];
+      } else if (verified === "pending") {
+        where.verified = false;
+        where.verificationStatus = { not: "rejected" };
+        where.rejectionReason = null;
+      }
     }
 
     const [vendors, total] = await Promise.all([
@@ -88,6 +100,7 @@ class AdminService {
       prisma.vendor.count({ where }),
     ]);
 
+    // Format vendors with additional info
     const formattedVendors = vendors.map((vendor) => ({
       ...vendor,
       verificationStatus: this.getVerificationStatusLabel(vendor),
@@ -107,7 +120,7 @@ class AdminService {
     };
   }
 
-  async verifyVendor(vendorId, verified) {
+  async verifyVendor(vendorId, verified, rejectionReason = null) {
     const vendor = await prisma.vendor.findUnique({
       where: { id: vendorId },
       include: {
@@ -125,9 +138,26 @@ class AdminService {
       throw new ApiError(404, "Vendor not found");
     }
 
+    // Prepare update data
+    const updateData = {
+      verified,
+      verificationStatus: verified ? "verified" : "rejected",
+      updatedAt: new Date(),
+    };
+
+    // Handle rejection
+    if (!verified) {
+      updateData.rejectionReason = rejectionReason || null;
+      updateData.rejectedAt = new Date();
+    } else {
+      // Clear rejection data when approving
+      updateData.rejectionReason = null;
+      updateData.rejectedAt = null;
+    }
+
     const updatedVendor = await prisma.vendor.update({
       where: { id: vendorId },
-      data: { verified },
+      data: updateData,
       include: {
         user: {
           select: {
@@ -141,8 +171,8 @@ class AdminService {
 
     return {
       ...updatedVendor,
-      verificationStatus: this.getVerificationStatusLabel(updatedVendor),
-      message: `Vendor ${verified ? "verified" : "unverified"} successfully`,
+      verificationStatusLabel: this.getVerificationStatusLabel(updatedVendor),
+      message: `Vendor ${verified ? "verified" : "rejected"} successfully`,
     };
   }
 
@@ -197,7 +227,11 @@ class AdminService {
       // Get current date ranges for growth calculations
       const now = new Date();
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-      const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const startOfLastMonth = new Date(
+        now.getFullYear(),
+        now.getMonth() - 1,
+        1
+      );
       const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
 
       const [
@@ -249,13 +283,10 @@ class AdminService {
         // Additional metrics
         prisma.vendor.count({ where: { verified: true } }),
         prisma.product.count({ where: { isActive: true, stock: { gt: 0 } } }),
-        prisma.inquiry.count({ 
-          where: { 
-            OR: [
-              { status: "RESPONDED" },
-              { status: "CLOSED" }
-            ]
-          } 
+        prisma.inquiry.count({
+          where: {
+            OR: [{ status: "RESPONDED" }, { status: "CLOSED" }],
+          },
         }),
       ]);
 
@@ -266,15 +297,32 @@ class AdminService {
       };
 
       // Calculate platform health
-      const verificationRate = totalVendors > 0 ? Math.round((verifiedVendors / totalVendors) * 100) : 0;
-      const productAvailabilityRate = totalProducts > 0 ? Math.round((activeProducts / totalProducts) * 100) : 0;
-      const responseRate = totalInquiries > 0 ? Math.round((inquiriesResponseRate / totalInquiries) * 100) : 0;
+      const verificationRate =
+        totalVendors > 0
+          ? Math.round((verifiedVendors / totalVendors) * 100)
+          : 0;
+      const productAvailabilityRate =
+        totalProducts > 0
+          ? Math.round((activeProducts / totalProducts) * 100)
+          : 0;
+      const responseRate =
+        totalInquiries > 0
+          ? Math.round((inquiriesResponseRate / totalInquiries) * 100)
+          : 0;
 
       // Determine platform health status
       let platformHealth = "Good";
-      if (verificationRate > 80 && productAvailabilityRate > 90 && responseRate > 75) {
+      if (
+        verificationRate > 80 &&
+        productAvailabilityRate > 90 &&
+        responseRate > 75
+      ) {
         platformHealth = "Excellent";
-      } else if (verificationRate < 50 || productAvailabilityRate < 70 || responseRate < 50) {
+      } else if (
+        verificationRate < 50 ||
+        productAvailabilityRate < 70 ||
+        responseRate < 50
+      ) {
         platformHealth = "Needs Attention";
       }
 
@@ -349,17 +397,31 @@ class AdminService {
         prisma.inquiry.count({ where: { status: "CLOSED" } }),
       ]);
 
-      const verificationRate = totalVendors > 0 ? Math.round((verifiedVendors / totalVendors) * 100) : 0;
-      const inquiryResponseRate = totalInquiries > 0 ? Math.round(((respondedInquiries + closedInquiries) / totalInquiries) * 100) : 0;
+      const verificationRate =
+        totalVendors > 0
+          ? Math.round((verifiedVendors / totalVendors) * 100)
+          : 0;
+      const inquiryResponseRate =
+        totalInquiries > 0
+          ? Math.round(
+              ((respondedInquiries + closedInquiries) / totalInquiries) * 100
+            )
+          : 0;
 
       return {
         pendingVerifications: {
           value: pendingVerifications,
-          priority: pendingVerifications > 10 ? "high" : pendingVerifications > 5 ? "medium" : "low",
+          priority:
+            pendingVerifications > 10
+              ? "high"
+              : pendingVerifications > 5
+              ? "medium"
+              : "low",
         },
         openInquiries: {
           value: openInquiries,
-          priority: openInquiries > 20 ? "high" : openInquiries > 10 ? "medium" : "low",
+          priority:
+            openInquiries > 20 ? "high" : openInquiries > 10 ? "medium" : "low",
         },
         activeProducts: {
           value: activeProducts,
@@ -383,7 +445,10 @@ class AdminService {
       };
     } catch (error) {
       console.error("❌ Error in getActivityMetrics:", error);
-      throw new ApiError(500, `Failed to fetch activity metrics: ${error.message}`);
+      throw new ApiError(
+        500,
+        `Failed to fetch activity metrics: ${error.message}`
+      );
     }
   }
 
@@ -516,7 +581,9 @@ class AdminService {
           id: `vendor-${vendor.id}`,
           type: "vendor_registration",
           title: "New Vendor Registration",
-          description: `${vendor.user.firstName} ${vendor.user.lastName} registered as ${vendor.vendorType || 'vendor'}`,
+          description: `${vendor.user.firstName} ${
+            vendor.user.lastName
+          } registered as ${vendor.vendorType || "vendor"}`,
           timestamp: vendor.createdAt,
           icon: "building",
           priority: "high",
@@ -530,7 +597,7 @@ class AdminService {
           type: "product_listed",
           title: "New Product Listed",
           description: `${product.name} by ${
-            product.vendor.businessName || 
+            product.vendor.businessName ||
             `${product.vendor.user.firstName} ${product.vendor.user.lastName}`
           }`,
           timestamp: product.createdAt,
@@ -577,7 +644,10 @@ class AdminService {
       };
     } catch (error) {
       console.error("❌ Error in getRecentActivities:", error);
-      throw new ApiError(500, `Failed to fetch recent activities: ${error.message}`);
+      throw new ApiError(
+        500,
+        `Failed to fetch recent activities: ${error.message}`
+      );
     }
   }
 
@@ -643,7 +713,11 @@ class AdminService {
     }
 
     // Verification status filter
-    if (verificationStatus && verificationStatus !== "all" && verificationStatus !== "") {
+    if (
+      verificationStatus &&
+      verificationStatus !== "all" &&
+      verificationStatus !== ""
+    ) {
       switch (verificationStatus) {
         case "gst_verified":
           where.AND = [{ verified: true }, { verificationType: "gst" }];
@@ -937,17 +1011,21 @@ class AdminService {
   // ===== HELPER METHODS =====
 
   getVerificationStatusLabel(vendor) {
-    if (!vendor.verified) {
+    if (vendor.verified) {
+      if (vendor.verificationType === "gst") {
+        return "GST Verified";
+      } else if (vendor.verificationType === "manual") {
+        return "Manually Verified";
+      }
+      return "Verified";
+    } else if (
+      vendor.verificationStatus === "rejected" ||
+      vendor.rejectionReason
+    ) {
+      return "Rejected";
+    } else {
       return "Pending Verification";
     }
-
-    if (vendor.verificationType === "gst") {
-      return "GST Verified";
-    } else if (vendor.verificationType === "manual") {
-      return "Manually Verified";
-    }
-
-    return "Verified";
   }
 
   async getVendorFilterStats() {

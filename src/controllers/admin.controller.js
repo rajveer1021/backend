@@ -36,16 +36,30 @@ class AdminController {
   });
 
   verifyVendor = asyncHandler(async (req, res) => {
-    const { verified } = req.body;
-    const result = await adminService.verifyVendor(
-      req.params.vendorId,
-      verified
-    );
-    res
-      .status(200)
-      .json(
-        new ApiResponse(200, result, "Vendor verification updated successfully")
+    const { verified, rejectionReason } = req.body;
+
+    try {
+      const result = await adminService.verifyVendor(
+        req.params.vendorId,
+        verified,
+        rejectionReason
       );
+
+      res
+        .status(200)
+        .json(
+          new ApiResponse(
+            200,
+            result,
+            `Vendor ${verified ? "verified" : "rejected"} successfully`
+          )
+        );
+    } catch (error) {
+      console.error("❌ Verify vendor error:", error);
+      throw error instanceof ApiError
+        ? error
+        : new ApiError(500, "Failed to update vendor verification");
+    }
   });
 
   getAllProducts = asyncHandler(async (req, res) => {
@@ -73,9 +87,7 @@ class AdminController {
 
       res
         .status(200)
-        .json(
-          new ApiResponse(200, result, "Core KPIs fetched successfully")
-        );
+        .json(new ApiResponse(200, result, "Core KPIs fetched successfully"));
     } catch (error) {
       console.error("❌ Error fetching core KPIs:", error);
       throw new ApiError(500, error.message || "Failed to fetch core KPIs");
@@ -99,7 +111,10 @@ class AdminController {
         );
     } catch (error) {
       console.error("❌ Error fetching activity metrics:", error);
-      throw new ApiError(500, error.message || "Failed to fetch activity metrics");
+      throw new ApiError(
+        500,
+        error.message || "Failed to fetch activity metrics"
+      );
     }
   });
 
@@ -118,15 +133,14 @@ class AdminController {
       res
         .status(200)
         .json(
-          new ApiResponse(
-            200,
-            result,
-            "Recent activities fetched successfully"
-          )
+          new ApiResponse(200, result, "Recent activities fetched successfully")
         );
     } catch (error) {
       console.error("❌ Error fetching recent activities:", error);
-      throw new ApiError(500, error.message || "Failed to fetch recent activities");
+      throw new ApiError(
+        500,
+        error.message || "Failed to fetch recent activities"
+      );
     }
   });
 
@@ -186,7 +200,10 @@ class AdminController {
         );
     } catch (error) {
       console.error("❌ Error fetching vendor stats:", error);
-      throw new ApiError(500, error.message || "Failed to fetch vendor statistics");
+      throw new ApiError(
+        500,
+        error.message || "Failed to fetch vendor statistics"
+      );
     }
   });
 
@@ -240,7 +257,10 @@ class AdminController {
         );
     } catch (error) {
       console.error("❌ Error fetching buyer stats:", error);
-      throw new ApiError(500, error.message || "Failed to fetch buyer statistics");
+      throw new ApiError(
+        500,
+        error.message || "Failed to fetch buyer statistics"
+      );
     }
   });
 
