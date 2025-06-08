@@ -1,10 +1,11 @@
+// src/services/admin.service.js - Simplified dashboard methods
+
 const prisma = require("../config/database");
 const ApiError = require("../utils/ApiError");
 
 class AdminService {
-  /**
-   * Get all users with pagination and filtering
-   */
+  // ... (keeping existing vendor/buyer management methods)
+
   async getAllUsers(page = 1, limit = 10, accountType) {
     const skip = (page - 1) * limit;
 
@@ -53,9 +54,6 @@ class AdminService {
     };
   }
 
-  /**
-   * Get vendor submissions for admin review
-   */
   async getVendorSubmissions(page = 1, limit = 10, verified) {
     const skip = (page - 1) * limit;
 
@@ -90,7 +88,6 @@ class AdminService {
       prisma.vendor.count({ where }),
     ]);
 
-    // Format vendors with additional info
     const formattedVendors = vendors.map((vendor) => ({
       ...vendor,
       verificationStatus: this.getVerificationStatusLabel(vendor),
@@ -110,9 +107,6 @@ class AdminService {
     };
   }
 
-  /**
-   * Verify/Unverify a vendor
-   */
   async verifyVendor(vendorId, verified) {
     const vendor = await prisma.vendor.findUnique({
       where: { id: vendorId },
@@ -152,9 +146,6 @@ class AdminService {
     };
   }
 
-  /**
-   * Get all products with vendor information
-   */
   async getAllProducts(page = 1, limit = 10) {
     const skip = (page - 1) * limit;
 
@@ -162,7 +153,7 @@ class AdminService {
       prisma.product.findMany({
         skip,
         take: limit,
-        where: { isActive: true }, // Only active products
+        where: { isActive: true },
         orderBy: { createdAt: "desc" },
         include: {
           vendor: {
@@ -194,60 +185,404 @@ class AdminService {
     };
   }
 
-  /**
-   * Get dashboard statistics
-   */
-  async getDashboardStats() {
-    const [
-      totalUsers,
-      totalVendors,
-      totalProducts,
-      totalInquiries,
-      verifiedVendors,
-      pendingVendors,
-      totalBuyers,
-      googleUsers,
-      activeProducts,
-      openInquiries,
-    ] = await Promise.all([
-      prisma.user.count(),
-      prisma.vendor.count(),
-      prisma.product.count({ where: { isActive: true } }),
-      prisma.inquiry.count(),
-      prisma.vendor.count({ where: { verified: true } }),
-      prisma.vendor.count({ where: { verified: false } }),
-      prisma.user.count({ where: { accountType: "BUYER" } }),
-      prisma.user.count({ where: { googleId: { not: null } } }),
-      prisma.product.count({ where: { isActive: true, stock: { gt: 0 } } }),
-      prisma.inquiry.count({ where: { status: "OPEN" } }),
-    ]);
+  // ===== SIMPLIFIED DASHBOARD METHODS =====
 
-    return {
-      totalUsers,
-      totalVendors,
-      totalBuyers,
-      totalProducts,
-      totalInquiries,
-      verifiedVendors,
-      pendingVendors,
-      googleUsers,
-      activeProducts,
-      openInquiries,
-      stats: {
-        userGrowth: await this.getUserGrowthStats(),
-        vendorVerificationRate:
-          totalVendors > 0
-            ? Math.round((verifiedVendors / totalVendors) * 100)
-            : 0,
-      },
-    };
+  /**
+   * Get Core KPIs (Total Users, Vendors, Products, Inquiries, Platform Health)
+   */
+  async getCoreKPIs() {
+    try {
+      console.log("📊 Fetching core KPIs...");
+
+      // Get current date ranges for growth calculations
+      const now = new Date();
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+
+      const [
+        // Current totals
+        totalUsers,
+        totalVendors,
+        totalProducts,
+        totalInquiries,
+
+        // Growth data (this month vs last month)
+        usersThisMonth,
+        usersLastMonth,
+        vendorsThisMonth,
+        vendorsLastMonth,
+        productsThisMonth,
+        productsLastMonth,
+        inquiriesThisMonth,
+        inquiriesLastMonth,
+
+        // Additional metrics
+        verifiedVendors,
+        activeProducts,
+        inquiriesResponseRate,
+      ] = await Promise.all([
+        // Current totals
+        prisma.user.count(),
+        prisma.vendor.count(),
+        prisma.product.count({ where: { isActive: true } }),
+        prisma.inquiry.count(),
+
+        // Growth metrics
+        prisma.user.count({ where: { createdAt: { gte: startOfMonth } } }),
+        prisma.user.count({
+          where: { createdAt: { gte: startOfLastMonth, lt: startOfMonth } },
+        }),
+        prisma.vendor.count({ where: { createdAt: { gte: startOfMonth } } }),
+        prisma.vendor.count({
+          where: { createdAt: { gte: startOfLastMonth, lt: startOfMonth } },
+        }),
+        prisma.product.count({ where: { createdAt: { gte: startOfMonth } } }),
+        prisma.product.count({
+          where: { createdAt: { gte: startOfLastMonth, lt: startOfMonth } },
+        }),
+        prisma.inquiry.count({ where: { createdAt: { gte: startOfMonth } } }),
+        prisma.inquiry.count({
+          where: { createdAt: { gte: startOfLastMonth, lt: startOfMonth } },
+        }),
+
+        // Additional metrics
+        prisma.vendor.count({ where: { verified: true } }),
+        prisma.product.count({ where: { isActive: true, stock: { gt: 0 } } }),
+        prisma.inquiry.count({ 
+          where: { 
+            OR: [
+              { status: "RESPONDED" },
+              { status: "CLOSED" }
+            ]
+          } 
+        }),
+      ]);
+
+      // Calculate growth percentages
+      const calculateGrowth = (current, previous) => {
+        if (previous === 0) return current > 0 ? 100 : 0;
+        return Math.round(((current - previous) / previous) * 100);
+      };
+
+      // Calculate platform health
+      const verificationRate = totalVendors > 0 ? Math.round((verifiedVendors / totalVendors) * 100) : 0;
+      const productAvailabilityRate = totalProducts > 0 ? Math.round((activeProducts / totalProducts) * 100) : 0;
+      const responseRate = totalInquiries > 0 ? Math.round((inquiriesResponseRate / totalInquiries) * 100) : 0;
+
+      // Determine platform health status
+      let platformHealth = "Good";
+      if (verificationRate > 80 && productAvailabilityRate > 90 && responseRate > 75) {
+        platformHealth = "Excellent";
+      } else if (verificationRate < 50 || productAvailabilityRate < 70 || responseRate < 50) {
+        platformHealth = "Needs Attention";
+      }
+
+      return {
+        totalUsers: {
+          value: totalUsers,
+          growth: calculateGrowth(usersThisMonth, usersLastMonth),
+          thisMonth: usersThisMonth,
+          lastMonth: usersLastMonth,
+        },
+        totalVendors: {
+          value: totalVendors,
+          growth: calculateGrowth(vendorsThisMonth, vendorsLastMonth),
+          thisMonth: vendorsThisMonth,
+          lastMonth: vendorsLastMonth,
+          verificationRate,
+        },
+        totalProducts: {
+          value: totalProducts,
+          growth: calculateGrowth(productsThisMonth, productsLastMonth),
+          thisMonth: productsThisMonth,
+          lastMonth: productsLastMonth,
+          availabilityRate: productAvailabilityRate,
+        },
+        totalInquiries: {
+          value: totalInquiries,
+          growth: calculateGrowth(inquiriesThisMonth, inquiriesLastMonth),
+          thisMonth: inquiriesThisMonth,
+          lastMonth: inquiriesLastMonth,
+          responseRate,
+        },
+        platformHealth: {
+          status: platformHealth,
+          verificationRate,
+          availabilityRate: productAvailabilityRate,
+          responseRate,
+        },
+        generatedAt: new Date().toISOString(),
+      };
+    } catch (error) {
+      console.error("❌ Error in getCoreKPIs:", error);
+      throw new ApiError(500, `Failed to fetch core KPIs: ${error.message}`);
+    }
   }
 
   /**
-   * Get vendors with advanced search and filtering
-   * 1. API to list all vendors on the platform ✅
-   * 2. API to search and filter vendors by name, email, vendor type, verification status ✅
+   * Get Activity Metrics (Pending Verifications, Open Inquiries, Active Products, Verification Rate)
    */
+  async getActivityMetrics() {
+    try {
+      console.log("📈 Fetching activity metrics...");
+
+      const [
+        pendingVerifications,
+        openInquiries,
+        activeProducts,
+        outOfStockProducts,
+        totalVendors,
+        verifiedVendors,
+        totalInquiries,
+        respondedInquiries,
+        closedInquiries,
+      ] = await Promise.all([
+        prisma.vendor.count({ where: { verified: false } }),
+        prisma.inquiry.count({ where: { status: "OPEN" } }),
+        prisma.product.count({ where: { isActive: true, stock: { gt: 0 } } }),
+        prisma.product.count({ where: { isActive: true, stock: 0 } }),
+        prisma.vendor.count(),
+        prisma.vendor.count({ where: { verified: true } }),
+        prisma.inquiry.count(),
+        prisma.inquiry.count({ where: { status: "RESPONDED" } }),
+        prisma.inquiry.count({ where: { status: "CLOSED" } }),
+      ]);
+
+      const verificationRate = totalVendors > 0 ? Math.round((verifiedVendors / totalVendors) * 100) : 0;
+      const inquiryResponseRate = totalInquiries > 0 ? Math.round(((respondedInquiries + closedInquiries) / totalInquiries) * 100) : 0;
+
+      return {
+        pendingVerifications: {
+          value: pendingVerifications,
+          priority: pendingVerifications > 10 ? "high" : pendingVerifications > 5 ? "medium" : "low",
+        },
+        openInquiries: {
+          value: openInquiries,
+          priority: openInquiries > 20 ? "high" : openInquiries > 10 ? "medium" : "low",
+        },
+        activeProducts: {
+          value: activeProducts,
+          outOfStock: outOfStockProducts,
+          total: activeProducts + outOfStockProducts,
+        },
+        verificationRate: {
+          value: verificationRate,
+          verified: verifiedVendors,
+          pending: pendingVerifications,
+          total: totalVendors,
+        },
+        inquiryMetrics: {
+          responseRate: inquiryResponseRate,
+          total: totalInquiries,
+          open: openInquiries,
+          responded: respondedInquiries,
+          closed: closedInquiries,
+        },
+        generatedAt: new Date().toISOString(),
+      };
+    } catch (error) {
+      console.error("❌ Error in getActivityMetrics:", error);
+      throw new ApiError(500, `Failed to fetch activity metrics: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get Recent Activities (last 10 activities by default)
+   */
+  async getRecentActivities(limit = 10) {
+    try {
+      console.log(`🔄 Fetching recent activities (limit: ${limit})...`);
+
+      const [
+        recentUsers,
+        recentVendors,
+        recentProducts,
+        recentInquiries,
+        recentVerifications,
+      ] = await Promise.all([
+        // Recent user registrations
+        prisma.user.findMany({
+          orderBy: { createdAt: "desc" },
+          take: Math.ceil(limit / 5),
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            accountType: true,
+            createdAt: true,
+          },
+        }),
+
+        // Recent vendor registrations
+        prisma.vendor.findMany({
+          orderBy: { createdAt: "desc" },
+          take: Math.ceil(limit / 5),
+          include: {
+            user: {
+              select: {
+                firstName: true,
+                lastName: true,
+                email: true,
+              },
+            },
+          },
+        }),
+
+        // Recent products
+        prisma.product.findMany({
+          where: { isActive: true },
+          orderBy: { createdAt: "desc" },
+          take: Math.ceil(limit / 5),
+          include: {
+            vendor: {
+              include: {
+                user: {
+                  select: {
+                    firstName: true,
+                    lastName: true,
+                  },
+                },
+              },
+            },
+          },
+        }),
+
+        // Recent inquiries
+        prisma.inquiry.findMany({
+          orderBy: { createdAt: "desc" },
+          take: Math.ceil(limit / 5),
+          include: {
+            buyer: {
+              select: {
+                firstName: true,
+                lastName: true,
+                email: true,
+              },
+            },
+            product: {
+              select: {
+                name: true,
+                vendor: {
+                  select: {
+                    businessName: true,
+                  },
+                },
+              },
+            },
+          },
+        }),
+
+        // Recent verifications (updated in last 7 days)
+        prisma.vendor.findMany({
+          where: {
+            verified: true,
+            updatedAt: {
+              gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+            },
+          },
+          orderBy: { updatedAt: "desc" },
+          take: Math.ceil(limit / 5),
+          include: {
+            user: {
+              select: {
+                firstName: true,
+                lastName: true,
+              },
+            },
+          },
+        }),
+      ]);
+
+      const activities = [];
+
+      // Add user registrations
+      recentUsers.forEach((user) => {
+        activities.push({
+          id: `user-${user.id}`,
+          type: "user_registration",
+          title: "New User Registration",
+          description: `${user.firstName} ${user.lastName} (${user.accountType}) joined the platform`,
+          timestamp: user.createdAt,
+          icon: "user-plus",
+          priority: user.accountType === "VENDOR" ? "high" : "medium",
+        });
+      });
+
+      // Add vendor registrations
+      recentVendors.forEach((vendor) => {
+        activities.push({
+          id: `vendor-${vendor.id}`,
+          type: "vendor_registration",
+          title: "New Vendor Registration",
+          description: `${vendor.user.firstName} ${vendor.user.lastName} registered as ${vendor.vendorType || 'vendor'}`,
+          timestamp: vendor.createdAt,
+          icon: "building",
+          priority: "high",
+        });
+      });
+
+      // Add product listings
+      recentProducts.forEach((product) => {
+        activities.push({
+          id: `product-${product.id}`,
+          type: "product_listed",
+          title: "New Product Listed",
+          description: `${product.name} by ${
+            product.vendor.businessName || 
+            `${product.vendor.user.firstName} ${product.vendor.user.lastName}`
+          }`,
+          timestamp: product.createdAt,
+          icon: "package",
+          priority: "medium",
+        });
+      });
+
+      // Add inquiries
+      recentInquiries.forEach((inquiry) => {
+        activities.push({
+          id: `inquiry-${inquiry.id}`,
+          type: "inquiry_received",
+          title: "New Inquiry",
+          description: `${inquiry.buyer.firstName} ${inquiry.buyer.lastName} inquired about ${inquiry.product.name}`,
+          timestamp: inquiry.createdAt,
+          icon: "message-square",
+          priority: "medium",
+        });
+      });
+
+      // Add verifications
+      recentVerifications.forEach((vendor) => {
+        activities.push({
+          id: `verification-${vendor.id}`,
+          type: "vendor_verified",
+          title: "Vendor Verified",
+          description: `${vendor.user.firstName} ${vendor.user.lastName} has been verified`,
+          timestamp: vendor.updatedAt,
+          icon: "check-circle",
+          priority: "high",
+        });
+      });
+
+      // Sort by timestamp and return top activities
+      const sortedActivities = activities
+        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+        .slice(0, limit);
+
+      return {
+        activities: sortedActivities,
+        total: sortedActivities.length,
+        generatedAt: new Date().toISOString(),
+      };
+    } catch (error) {
+      console.error("❌ Error in getRecentActivities:", error);
+      throw new ApiError(500, `Failed to fetch recent activities: ${error.message}`);
+    }
+  }
+
+  // ===== VENDOR MANAGEMENT METHODS =====
+
   async getVendorsWithFilters(params) {
     const {
       page = 1,
@@ -265,11 +600,9 @@ class AdminService {
     const where = {};
     const userWhere = {};
 
-    // Search filter - search in user name and email, and vendor business name
+    // Search filter
     if (search && search.trim()) {
       const searchTerm = search.trim();
-
-      // Search across user and vendor fields
       where.OR = [
         {
           businessName: {
@@ -310,11 +643,7 @@ class AdminService {
     }
 
     // Verification status filter
-    if (
-      verificationStatus &&
-      verificationStatus !== "all" &&
-      verificationStatus !== ""
-    ) {
+    if (verificationStatus && verificationStatus !== "all" && verificationStatus !== "") {
       switch (verificationStatus) {
         case "gst_verified":
           where.AND = [{ verified: true }, { verificationType: "gst" }];
@@ -385,7 +714,7 @@ class AdminService {
         prisma.vendor.count({ where }),
       ]);
 
-      // Format the response with additional computed fields
+      // Format the response
       const formattedVendors = vendors.map((vendor) => ({
         id: vendor.id,
         userId: vendor.userId,
@@ -459,13 +788,6 @@ class AdminService {
     }
   }
 
-  // ===== BUYER MANAGEMENT =====
-
-  /**
-   * Get buyers with search and filtering
-   * 3. API to list buyers on the platform ✅
-   * 4. API to search and filter buyers by name, email ✅
-   */
   async getBuyersWithFilters(params) {
     const {
       page = 1,
@@ -477,12 +799,10 @@ class AdminService {
 
     const skip = (page - 1) * limit;
 
-    // Build where clause
     const where = {
       accountType: "BUYER",
     };
 
-    // Search filter - search in name and email
     if (search && search.trim()) {
       const searchTerm = search.trim();
       where.OR = [
@@ -507,7 +827,6 @@ class AdminService {
       ];
     }
 
-    // Build orderBy clause
     let orderBy = {};
     switch (sortBy) {
       case "name":
@@ -551,14 +870,13 @@ class AdminService {
               orderBy: {
                 createdAt: "desc",
               },
-              take: 5, // Get last 5 inquiries for summary
+              take: 5,
             },
           },
         }),
         prisma.user.count({ where }),
       ]);
 
-      // Format the response with inquiry statistics
       const formattedBuyers = buyers.map((buyer) => {
         const totalInquiries = buyer._count.inquiries;
         const activeInquiries = buyer.inquiries.filter(
@@ -618,9 +936,6 @@ class AdminService {
 
   // ===== HELPER METHODS =====
 
-  /**
-   * Get human-readable verification status label
-   */
   getVerificationStatusLabel(vendor) {
     if (!vendor.verified) {
       return "Pending Verification";
@@ -635,9 +950,6 @@ class AdminService {
     return "Verified";
   }
 
-  /**
-   * Get vendor statistics for filters
-   */
   async getVendorFilterStats() {
     try {
       const [vendorTypes, verificationStats, totalVendors] = await Promise.all([
@@ -675,9 +987,6 @@ class AdminService {
     }
   }
 
-  /**
-   * Get buyer statistics
-   */
   async getBuyerFilterStats() {
     try {
       const [totalBuyers, googleUsers, regularUsers, activeBuyers] =
@@ -727,643 +1036,54 @@ class AdminService {
     }
   }
 
-  /**
-   * Get comprehensive dashboard statistics and KPIs
-   */
-  async getDashboardKPIs() {
+  // Legacy method for backward compatibility
+  async getDashboardStats() {
     try {
-      console.log("📊 Fetching comprehensive dashboard KPIs...");
-
-      // Get current date ranges for comparisons
-      const now = new Date();
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-      const startOfLastMonth = new Date(
-        now.getFullYear(),
-        now.getMonth() - 1,
-        1
-      );
-      const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
-      const startOfWeek = new Date(now.setDate(now.getDate() - now.getDay()));
-      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-
-      // Parallel execution for better performance
       const [
-        // Basic counts
+        totalUsers,
+        totalVendors,
+        totalProducts,
+        totalInquiries,
+        verifiedVendors,
+        pendingVendors,
+        totalBuyers,
+        googleUsers,
+        activeProducts,
+        openInquiries,
+      ] = await Promise.all([
+        prisma.user.count(),
+        prisma.vendor.count(),
+        prisma.product.count({ where: { isActive: true } }),
+        prisma.inquiry.count(),
+        prisma.vendor.count({ where: { verified: true } }),
+        prisma.vendor.count({ where: { verified: false } }),
+        prisma.user.count({ where: { accountType: "BUYER" } }),
+        prisma.user.count({ where: { googleId: { not: null } } }),
+        prisma.product.count({ where: { isActive: true, stock: { gt: 0 } } }),
+        prisma.inquiry.count({ where: { status: "OPEN" } }),
+      ]);
+
+      return {
         totalUsers,
         totalVendors,
         totalBuyers,
         totalProducts,
         totalInquiries,
-
-        // Verification stats
         verifiedVendors,
         pendingVendors,
-        gstVerifiedVendors,
-        manuallyVerifiedVendors,
-
-        // Activity stats
-        activeProducts,
-        outOfStockProducts,
-        openInquiries,
-        respondedInquiries,
-        closedInquiries,
-
-        // Google users
         googleUsers,
-        regularUsers,
-
-        // Growth metrics (this month vs last month)
-        usersThisMonth,
-        usersLastMonth,
-        vendorsThisMonth,
-        vendorsLastMonth,
-        productsThisMonth,
-        productsLastMonth,
-        inquiriesThisMonth,
-        inquiriesLastMonth,
-
-        // Recent activity (last 7 days)
-        recentUsers,
-        recentVendors,
-        recentProducts,
-        recentInquiries,
-
-        // Vendor type distribution
-        vendorTypeStats,
-
-        // Product category stats
-        categoryStats,
-
-        // Top performing vendors
-        topVendors,
-
-        // Recent activities for timeline
-        recentActivities,
-      ] = await Promise.all([
-        // Basic counts
-        prisma.user.count(),
-        prisma.vendor.count(),
-        prisma.user.count({ where: { accountType: "BUYER" } }),
-        prisma.product.count({ where: { isActive: true } }),
-        prisma.inquiry.count(),
-
-        // Verification stats
-        prisma.vendor.count({ where: { verified: true } }),
-        prisma.vendor.count({ where: { verified: false } }),
-        prisma.vendor.count({
-          where: { verified: true, verificationType: "gst" },
-        }),
-        prisma.vendor.count({
-          where: { verified: true, verificationType: "manual" },
-        }),
-
-        // Activity stats
-        prisma.product.count({ where: { isActive: true, stock: { gt: 0 } } }),
-        prisma.product.count({ where: { isActive: true, stock: 0 } }),
-        prisma.inquiry.count({ where: { status: "OPEN" } }),
-        prisma.inquiry.count({ where: { status: "RESPONDED" } }),
-        prisma.inquiry.count({ where: { status: "CLOSED" } }),
-
-        // Google users
-        prisma.user.count({ where: { googleId: { not: null } } }),
-        prisma.user.count({ where: { googleId: null } }),
-
-        // Growth metrics
-        prisma.user.count({ where: { createdAt: { gte: startOfMonth } } }),
-        prisma.user.count({
-          where: { createdAt: { gte: startOfLastMonth, lt: startOfMonth } },
-        }),
-        prisma.vendor.count({ where: { createdAt: { gte: startOfMonth } } }),
-        prisma.vendor.count({
-          where: { createdAt: { gte: startOfLastMonth, lt: startOfMonth } },
-        }),
-        prisma.product.count({ where: { createdAt: { gte: startOfMonth } } }),
-        prisma.product.count({
-          where: { createdAt: { gte: startOfLastMonth, lt: startOfMonth } },
-        }),
-        prisma.inquiry.count({ where: { createdAt: { gte: startOfMonth } } }),
-        prisma.inquiry.count({
-          where: { createdAt: { gte: startOfLastMonth, lt: startOfMonth } },
-        }),
-
-        // Recent activity (last 7 days)
-        prisma.user.count({ where: { createdAt: { gte: startOfWeek } } }),
-        prisma.vendor.count({ where: { createdAt: { gte: startOfWeek } } }),
-        prisma.product.count({ where: { createdAt: { gte: startOfWeek } } }),
-        prisma.inquiry.count({ where: { createdAt: { gte: startOfWeek } } }),
-
-        // Vendor type distribution
-        prisma.vendor.groupBy({
-          by: ["vendorType"],
-          _count: { vendorType: true },
-          where: { vendorType: { not: null } },
-        }),
-
-        // Product category stats
-        prisma.product.groupBy({
-          by: ["category"],
-          _count: { category: true },
-          where: { isActive: true, category: { not: null } },
-        }),
-
-        // Top performing vendors (by product count and inquiry count)
-        prisma.vendor.findMany({
-          include: {
-            user: {
-              select: {
-                firstName: true,
-                lastName: true,
-                email: true,
-              },
-            },
-            _count: {
-              select: {
-                products: { where: { isActive: true } },
-              },
-            },
-          },
-          orderBy: {
-            products: {
-              _count: "desc",
-            },
-          },
-          take: 5,
-        }),
-
-        // Recent activities
-        this.getRecentActivities(),
-      ]);
-
-      // Calculate growth percentages
-      const calculateGrowth = (current, previous) => {
-        if (previous === 0) return current > 0 ? 100 : 0;
-        return Math.round(((current - previous) / previous) * 100);
-      };
-
-      // Calculate rates
-      const verificationRate =
-        totalVendors > 0
-          ? Math.round((verifiedVendors / totalVendors) * 100)
-          : 0;
-      const inquiryResponseRate =
-        totalInquiries > 0
-          ? Math.round(
-              ((respondedInquiries + closedInquiries) / totalInquiries) * 100
-            )
-          : 0;
-      const googleUserRate =
-        totalUsers > 0 ? Math.round((googleUsers / totalUsers) * 100) : 0;
-      const productAvailabilityRate =
-        totalProducts > 0
-          ? Math.round((activeProducts / totalProducts) * 100)
-          : 0;
-
-      return {
-        // Core KPIs
-        coreStats: {
-          totalUsers: {
-            value: totalUsers,
-            growth: calculateGrowth(usersThisMonth, usersLastMonth),
-            weeklyGrowth: recentUsers,
-          },
-          totalVendors: {
-            value: totalVendors,
-            growth: calculateGrowth(vendorsThisMonth, vendorsLastMonth),
-            weeklyGrowth: recentVendors,
-            verificationRate,
-          },
-          totalBuyers: {
-            value: totalBuyers,
-            percentage:
-              totalUsers > 0 ? Math.round((totalBuyers / totalUsers) * 100) : 0,
-          },
-          totalProducts: {
-            value: totalProducts,
-            growth: calculateGrowth(productsThisMonth, productsLastMonth),
-            weeklyGrowth: recentProducts,
-            availabilityRate: productAvailabilityRate,
-          },
-          totalInquiries: {
-            value: totalInquiries,
-            growth: calculateGrowth(inquiriesThisMonth, inquiriesLastMonth),
-            weeklyGrowth: recentInquiries,
-            responseRate: inquiryResponseRate,
-          },
-        },
-
-        // Verification metrics
-        verificationMetrics: {
-          verified: verifiedVendors,
-          pending: pendingVendors,
-          gstVerified: gstVerifiedVendors,
-          manuallyVerified: manuallyVerifiedVendors,
-          verificationRate,
-          pendingRate:
+        activeProducts,
+        openInquiries,
+        stats: {
+          vendorVerificationRate:
             totalVendors > 0
-              ? Math.round((pendingVendors / totalVendors) * 100)
+              ? Math.round((verifiedVendors / totalVendors) * 100)
               : 0,
         },
-
-        // Activity metrics
-        activityMetrics: {
-          activeProducts,
-          outOfStockProducts,
-          openInquiries,
-          respondedInquiries,
-          closedInquiries,
-          inquiryDistribution: {
-            open: openInquiries,
-            responded: respondedInquiries,
-            closed: closedInquiries,
-          },
-        },
-
-        // User metrics
-        userMetrics: {
-          googleUsers,
-          regularUsers,
-          googleUserRate,
-          userDistribution: {
-            buyers: totalBuyers,
-            vendors: totalVendors,
-            buyerPercentage:
-              totalUsers > 0 ? Math.round((totalBuyers / totalUsers) * 100) : 0,
-            vendorPercentage:
-              totalUsers > 0
-                ? Math.round((totalVendors / totalUsers) * 100)
-                : 0,
-          },
-        },
-
-        // Growth trends
-        growthTrends: {
-          users: {
-            thisMonth: usersThisMonth,
-            lastMonth: usersLastMonth,
-            growth: calculateGrowth(usersThisMonth, usersLastMonth),
-            thisWeek: recentUsers,
-          },
-          vendors: {
-            thisMonth: vendorsThisMonth,
-            lastMonth: vendorsLastMonth,
-            growth: calculateGrowth(vendorsThisMonth, vendorsLastMonth),
-            thisWeek: recentVendors,
-          },
-          products: {
-            thisMonth: productsThisMonth,
-            lastMonth: productsLastMonth,
-            growth: calculateGrowth(productsThisMonth, productsLastMonth),
-            thisWeek: recentProducts,
-          },
-          inquiries: {
-            thisMonth: inquiriesThisMonth,
-            lastMonth: inquiriesLastMonth,
-            growth: calculateGrowth(inquiriesThisMonth, inquiriesLastMonth),
-            thisWeek: recentInquiries,
-          },
-        },
-
-        // Distribution stats
-        distributions: {
-          vendorTypes: vendorTypeStats.map((item) => ({
-            type: item.vendorType,
-            count: item._count.vendorType,
-            percentage:
-              totalVendors > 0
-                ? Math.round((item._count.vendorType / totalVendors) * 100)
-                : 0,
-          })),
-          productCategories: categoryStats
-            .map((item) => ({
-              category: item.category,
-              count: item._count.category,
-              percentage:
-                totalProducts > 0
-                  ? Math.round((item._count.category / totalProducts) * 100)
-                  : 0,
-            }))
-            .slice(0, 10), // Top 10 categories
-        },
-
-        // Top performers
-        topPerformers: {
-          vendors: topVendors.map((vendor) => ({
-            id: vendor.id,
-            name:
-              vendor.businessName ||
-              `${vendor.user.firstName} ${vendor.user.lastName}`,
-            email: vendor.user.email,
-            productCount: vendor._count.products,
-            verified: vendor.verified,
-            verificationStatus: this.getVerificationStatusLabel(vendor),
-          })),
-        },
-
-        // Recent activities
-        recentActivities,
-
-        // Calculated metrics for quick insights
-        insights: {
-          mostActiveCategory:
-            categoryStats.length > 0
-              ? categoryStats.reduce((max, cat) =>
-                  cat._count.category > max._count.category ? cat : max
-                ).category
-              : null,
-
-          mostCommonVendorType:
-            vendorTypeStats.length > 0
-              ? vendorTypeStats.reduce((max, type) =>
-                  type._count.vendorType > max._count.vendorType ? type : max
-                ).vendorType
-              : null,
-
-          averageProductsPerVendor:
-            totalVendors > 0 ? Math.round(totalProducts / totalVendors) : 0,
-          averageInquiriesPerProduct:
-            totalProducts > 0 ? Math.round(totalInquiries / totalProducts) : 0,
-
-          platformHealth: {
-            userGrowth:
-              calculateGrowth(usersThisMonth, usersLastMonth) > 0
-                ? "growing"
-                : "stable",
-            verificationHealth:
-              verificationRate > 70
-                ? "good"
-                : verificationRate > 50
-                ? "moderate"
-                : "needs_attention",
-            activityLevel: recentInquiries > 0 ? "active" : "low",
-          },
-        },
-
-        // Timestamps
-        generatedAt: new Date().toISOString(),
-        dataRange: {
-          currentMonth: startOfMonth.toISOString(),
-          lastMonth: startOfLastMonth.toISOString(),
-          currentWeek: startOfWeek.toISOString(),
-        },
       };
     } catch (error) {
-      console.error("❌ Error in getDashboardKPIs:", error);
-      throw new ApiError(
-        500,
-        `Failed to fetch dashboard KPIs: ${error.message}`
-      );
-    }
-  }
-
-  /**
-   * Get recent activities for dashboard timeline
-   */
-  async getRecentActivities() {
-    try {
-      const [
-        recentUsers,
-        recentVendors,
-        recentProducts,
-        recentInquiries,
-        recentVerifications,
-      ] = await Promise.all([
-        // Recent user registrations
-        prisma.user.findMany({
-          orderBy: { createdAt: "desc" },
-          take: 5,
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-            accountType: true,
-            createdAt: true,
-          },
-        }),
-
-        // Recent vendor registrations
-        prisma.vendor.findMany({
-          orderBy: { createdAt: "desc" },
-          take: 5,
-          include: {
-            user: {
-              select: {
-                firstName: true,
-                lastName: true,
-                email: true,
-              },
-            },
-          },
-        }),
-
-        // Recent products
-        prisma.product.findMany({
-          where: { isActive: true },
-          orderBy: { createdAt: "desc" },
-          take: 5,
-          include: {
-            vendor: {
-              include: {
-                user: {
-                  select: {
-                    firstName: true,
-                    lastName: true,
-                  },
-                },
-              },
-            },
-          },
-        }),
-
-        // Recent inquiries
-        prisma.inquiry.findMany({
-          orderBy: { createdAt: "desc" },
-          take: 5,
-          include: {
-            buyer: {
-              select: {
-                firstName: true,
-                lastName: true,
-                email: true,
-              },
-            },
-            product: {
-              select: {
-                name: true,
-                vendor: {
-                  select: {
-                    businessName: true,
-                  },
-                },
-              },
-            },
-          },
-        }),
-
-        // Recent verifications
-        prisma.vendor.findMany({
-          where: {
-            verified: true,
-            updatedAt: {
-              gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), // Last 7 days
-            },
-          },
-          orderBy: { updatedAt: "desc" },
-          take: 5,
-          include: {
-            user: {
-              select: {
-                firstName: true,
-                lastName: true,
-              },
-            },
-          },
-        }),
-      ]);
-
-      const activities = [];
-
-      // Add user registrations
-      recentUsers.forEach((user) => {
-        activities.push({
-          id: `user-${user.id}`,
-          type: "user_registration",
-          title: "New User Registration",
-          description: `${user.firstName} ${user.lastName} (${user.accountType}) joined the platform`,
-          timestamp: user.createdAt,
-          icon: "user-plus",
-          priority: user.accountType === "VENDOR" ? "high" : "medium",
-        });
-      });
-
-      // Add vendor registrations
-      recentVendors.forEach((vendor) => {
-        activities.push({
-          id: `vendor-${vendor.id}`,
-          type: "vendor_registration",
-          title: "New Vendor Registration",
-          description: `${vendor.user.firstName} ${vendor.user.lastName} registered as ${vendor.vendorType}`,
-          timestamp: vendor.createdAt,
-          icon: "building",
-          priority: "high",
-        });
-      });
-
-      // Add product listings
-      recentProducts.forEach((product) => {
-        activities.push({
-          id: `product-${product.id}`,
-          type: "product_listed",
-          title: "New Product Listed",
-          description: `${product.name} by ${
-            product.vendor.businessName || product.vendor.user.firstName
-          }`,
-          timestamp: product.createdAt,
-          icon: "package",
-          priority: "medium",
-        });
-      });
-
-      // Add inquiries
-      recentInquiries.forEach((inquiry) => {
-        activities.push({
-          id: `inquiry-${inquiry.id}`,
-          type: "inquiry_received",
-          title: "New Inquiry",
-          description: `${inquiry.buyer.firstName} ${inquiry.buyer.lastName} inquired about ${inquiry.product.name}`,
-          timestamp: inquiry.createdAt,
-          icon: "message-square",
-          priority: "medium",
-        });
-      });
-
-      // Add verifications
-      recentVerifications.forEach((vendor) => {
-        activities.push({
-          id: `verification-${vendor.id}`,
-          type: "vendor_verified",
-          title: "Vendor Verified",
-          description: `${vendor.user.firstName} ${vendor.user.lastName} has been verified`,
-          timestamp: vendor.updatedAt,
-          icon: "check-circle",
-          priority: "high",
-        });
-      });
-
-      // Sort by timestamp and return top 10
-      return activities
-        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-        .slice(0, 10);
-    } catch (error) {
-      console.error("❌ Error in getRecentActivities:", error);
-      return [];
-    }
-  }
-
-  /**
-   * Get daily statistics for charts (last 30 days)
-   */
-  async getDailyStats(days = 30) {
-    try {
-      const endDate = new Date();
-      const startDate = new Date(
-        endDate.getTime() - days * 24 * 60 * 60 * 1000
-      );
-
-      const dailyData = [];
-
-      for (let i = 0; i < days; i++) {
-        const date = new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000);
-        const nextDate = new Date(date.getTime() + 24 * 60 * 60 * 1000);
-
-        const [users, vendors, products, inquiries] = await Promise.all([
-          prisma.user.count({
-            where: {
-              createdAt: {
-                gte: date,
-                lt: nextDate,
-              },
-            },
-          }),
-          prisma.vendor.count({
-            where: {
-              createdAt: {
-                gte: date,
-                lt: nextDate,
-              },
-            },
-          }),
-          prisma.product.count({
-            where: {
-              createdAt: {
-                gte: date,
-                lt: nextDate,
-              },
-            },
-          }),
-          prisma.inquiry.count({
-            where: {
-              createdAt: {
-                gte: date,
-                lt: nextDate,
-              },
-            },
-          }),
-        ]);
-
-        dailyData.push({
-          date: date.toISOString().split("T")[0],
-          users,
-          vendors,
-          products,
-          inquiries,
-        });
-      }
-
-      return dailyData;
-    } catch (error) {
-      console.error("❌ Error in getDailyStats:", error);
-      throw new ApiError(500, "Failed to fetch daily statistics");
+      console.error("❌ Error in getDashboardStats:", error);
+      throw new ApiError(500, "Failed to fetch dashboard stats");
     }
   }
 }
