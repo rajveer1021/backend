@@ -10,6 +10,7 @@ const productRoutes = require('./routes/product.routes');
 const inquiryRoutes = require('./routes/inquiry.routes');
 const adminRoutes = require('./routes/admin.routes');
 const dashboardRoutes = require('./routes/dashboard.routes');
+const subscriptionRoutes = require('./routes/subscription.routes');
 
 // Import error middleware
 const errorHandler = require('./middleware/error.middleware');
@@ -43,6 +44,7 @@ app.use('/api/products', productRoutes);
 app.use('/api/inquiries', inquiryRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/subscriptions', subscriptionRoutes)
 
 // Health check
 app.get('/health', (req, res) => {

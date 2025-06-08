@@ -14,7 +14,20 @@ class AuthController {
   login = asyncHandler(async (req, res) => {
     const { email, password } = req.body;
     const result = await authService.login(email, password);
-    res.status(200).json(new ApiResponse(200, result, "Login successful"));
+
+    // Add redirect information for frontend
+    const redirectUrl = result.user.accountType === "ADMIN" ? "/admin" : "/";
+
+    res.status(200).json(
+      new ApiResponse(
+        200,
+        {
+          ...result,
+          redirectUrl,
+        },
+        "Login successful"
+      )
+    );
   });
 
   // BYPASS: Google Auth - always use VENDOR account type
@@ -32,34 +45,56 @@ class AuthController {
 
     try {
       // BYPASS: Force VENDOR account type regardless of what's sent
-      const forcedAccountType = 'VENDOR';
-      console.log(`🔧 Google Auth Bypass: Using forced account type: ${forcedAccountType}`);
+      const forcedAccountType = "VENDOR";
+      console.log(
+        `🔧 Google Auth Bypass: Using forced account type: ${forcedAccountType}`
+      );
 
-      const result = await authService.googleAuth(credential, forcedAccountType);
+      const result = await authService.googleAuth(
+        credential,
+        forcedAccountType
+      );
 
       // BYPASS: Skip account type selection entirely
       if (result.needsAccountTypeSelection) {
-        console.log("🔧 Bypassing account type selection - creating VENDOR account directly");
-        
+        console.log(
+          "🔧 Bypassing account type selection - creating VENDOR account directly"
+        );
+
         // Extract user info and create account directly with VENDOR type
         const { userInfo } = result;
-        
+
         try {
           const directResult = await authService.setGoogleUserAccountType(
             userInfo.email,
             userInfo.googleId,
-            'VENDOR',
+            "VENDOR",
             {
-              firstName: userInfo.firstName || userInfo.name?.split(' ')[0] || 'User',
-              lastName: userInfo.lastName || userInfo.name?.split(' ').slice(1).join(' ') || '',
+              firstName:
+                userInfo.firstName || userInfo.name?.split(" ")[0] || "User",
+              lastName:
+                userInfo.lastName ||
+                userInfo.name?.split(" ").slice(1).join(" ") ||
+                "",
               name: userInfo.name,
-              picture: userInfo.picture
+              picture: userInfo.picture,
             }
           );
 
-          return res.status(200).json(new ApiResponse(200, directResult, "Google authentication successful - VENDOR account created"));
+          return res
+            .status(200)
+            .json(
+              new ApiResponse(
+                200,
+                directResult,
+                "Google authentication successful - VENDOR account created"
+              )
+            );
         } catch (setAccountError) {
-          console.error("🚨 Failed to set account type in bypass:", setAccountError);
+          console.error(
+            "🚨 Failed to set account type in bypass:",
+            setAccountError
+          );
           return res.status(500).json({
             success: false,
             message: "Failed to create account. Please try again.",
@@ -109,8 +144,10 @@ class AuthController {
 
     try {
       // BYPASS: Force VENDOR for bypass even if different account type is requested
-      const forcedAccountType = 'VENDOR';
-      console.log(`🔧 Set Account Type Bypass: Using forced account type: ${forcedAccountType}`);
+      const forcedAccountType = "VENDOR";
+      console.log(
+        `🔧 Set Account Type Bypass: Using forced account type: ${forcedAccountType}`
+      );
 
       const updatedUserInfo = userInfo
         ? {
@@ -131,7 +168,9 @@ class AuthController {
 
       res
         .status(201)
-        .json(new ApiResponse(201, result, "VENDOR account created successfully"));
+        .json(
+          new ApiResponse(201, result, "VENDOR account created successfully")
+        );
     } catch (error) {
       console.error("🚨 Set Account Type Error:", error);
 

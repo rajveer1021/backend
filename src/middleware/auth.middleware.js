@@ -19,7 +19,16 @@ const protect = asyncHandler(async (req, res, next) => {
     
     const user = await prisma.user.findUnique({
       where: { id: decoded.id },
-      include: { vendor: true },
+      include: { 
+        vendor: {
+          select: {
+            id: true,
+            verified: true,
+            businessName: true,
+            vendorType: true
+          }
+        }
+      },
     });
 
     if (!user) {
@@ -33,6 +42,7 @@ const protect = asyncHandler(async (req, res, next) => {
   }
 });
 
+// Update existing middleware functions
 const authorize = (...roles) => {
   return (req, res, next) => {
     if (!roles.includes(req.user.accountType)) {
@@ -46,10 +56,19 @@ const isVendor = authorize('VENDOR');
 const isAdmin = authorize('ADMIN');
 const isVendorOrAdmin = authorize('VENDOR', 'ADMIN');
 
+// Add new middleware for admin-only routes
+const requireAdmin = (req, res, next) => {
+  if (req.user.accountType !== 'ADMIN') {
+    throw new ApiError(403, 'Admin access required');
+  }
+  next();
+};
+
 module.exports = {
   protect,
   authorize,
   isVendor,
   isAdmin,
   isVendorOrAdmin,
+  requireAdmin,
 };

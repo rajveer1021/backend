@@ -1,16 +1,31 @@
-// src/middleware/validation.middleware.js - Complete fixed version
+// src/middleware/validation.middleware.js - Simple fix for your current file
 
 const ApiError = require('../utils/ApiError');
 
 const validate = (schema) => {
   return (req, res, next) => {
     try {
+      // Handle both body and query parameters
+      let dataToValidate;
       
-      // Parse the request body directly with Zod
-      const validatedData = schema.parse(req.body);
+      if (req.method === 'GET') {
+        // For GET requests, validate query parameters
+        dataToValidate = req.query || {};
+      } else {
+        // For POST/PUT/PATCH requests, validate body
+        dataToValidate = req.body || {};
+      }
+      
+      // Parse the request data with Zod
+      const validatedData = schema.parse(dataToValidate);
             
-      // Set the validated data back to req.body
-      req.body = validatedData;
+      // Set the validated data back
+      if (req.method === 'GET') {
+        req.query = validatedData;
+      } else {
+        req.body = validatedData;
+      }
+      
       next();
     } catch (error) {
       console.error('❌ Validation error:', error);
