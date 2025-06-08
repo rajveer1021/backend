@@ -1,4 +1,4 @@
-// src/routes/admin.routes.js - Updated with rejection handling routes
+// src/routes/admin.routes.js - Updated with missing user toggle routes
 
 const express = require('express');
 const adminController = require('../controllers/admin.controller');
@@ -7,7 +7,8 @@ const validate = require('../middleware/validation.middleware');
 const { 
   vendorVerificationSchema,
   vendorSubmissionQuerySchema,
-  dashboardQuerySchema 
+  dashboardQuerySchema,
+  userToggleStatusSchema 
 } = require('../validators/admin.validator');
 
 const router = express.Router();
@@ -43,6 +44,23 @@ router.get('/dashboard/recent-activities',
 // ===== CORE ADMIN ROUTES =====
 router.get('/users', adminController.getAllUsers);
 router.get('/products', adminController.getAllProducts);
+
+// ===== USER ACTIVATION MANAGEMENT ROUTES =====
+
+/**
+ * Toggle user activation status (activate/deactivate)
+ * PUT /api/admin/users/:userId/toggle-status
+ */
+router.put('/users/:userId/toggle-status', 
+  validate(userToggleStatusSchema), 
+  adminController.toggleUserStatus
+);
+
+/**
+ * Get user activation statistics
+ * GET /api/admin/users/activation-stats
+ */
+router.get('/users/activation-stats', adminController.getUserActivationStats);
 
 // ===== VENDOR MANAGEMENT ROUTES =====
 
@@ -100,6 +118,18 @@ router.put('/vendors/:vendorId/verify',
  */
 router.post('/vendors/:vendorId/clear-rejection', adminController.clearVendorRejection);
 
+/**
+ * Update vendor status (block/unblock)
+ * PUT /api/admin/vendors/:vendorId/status
+ */
+router.put('/vendors/:vendorId/status', adminController.updateVendorStatus);
+
+/**
+ * Delete vendor account
+ * DELETE /api/admin/vendors/:vendorId
+ */
+router.delete('/vendors/:vendorId', adminController.deleteVendor);
+
 // ===== BUYER MANAGEMENT ROUTES =====
 
 /**
@@ -119,10 +149,19 @@ router.get('/buyers/stats', adminController.getBuyerStats);
  */
 router.get('/buyers/:buyerId', adminController.getBuyerDetails);
 
+/**
+ * Update buyer status (block/unblock)
+ * PUT /api/admin/buyers/:buyerId/status
+ */
+router.put('/buyers/:buyerId/status', adminController.updateBuyerStatus);
+
+/**
+ * Delete buyer account
+ * DELETE /api/admin/buyers/:buyerId
+ */
+router.delete('/buyers/:buyerId', adminController.deleteBuyer);
+
 // Keep legacy dashboard route for backward compatibility
 router.get('/dashboard/stats', adminController.getDashboardStats);
-
-router.put('/users/:userId/toggle-status', adminController.toggleUserStatus);
-router.get('/users/activation-stats', adminController.getUserActivationStats);
 
 module.exports = router;
