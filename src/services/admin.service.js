@@ -1,11 +1,9 @@
-// src/services/admin.service.js - Simplified dashboard methods
+// src/services/admin.service.js - Updated with rejection handling
 
 const prisma = require("../config/database");
 const ApiError = require("../utils/ApiError");
 
 class AdminService {
-  // ... (keeping existing vendor/buyer management methods)
-
   async getAllUsers(page = 1, limit = 10, accountType) {
     const skip = (page - 1) * limit;
 
@@ -34,6 +32,9 @@ class AdminService {
               verified: true,
               businessName: true,
               vendorType: true,
+              verificationStatus: true,
+              rejectionReason: true,
+              rejectedAt: true,
             },
           },
         },
@@ -61,20 +62,26 @@ class AdminService {
       profileStep: 3, // Only vendors who completed all steps
     };
 
-    // Filter by verification status if specified
+    // Enhanced filtering by verification status
     if (verified !== undefined) {
       if (verified === "true") {
         where.verified = true;
+        where.verificationStatus = "verified";
       } else if (verified === "false") {
         where.verified = false;
-      } else if (verified === "rejected") {
         where.OR = [
-          { verificationStatus: "rejected" },
-          { rejectionReason: { not: null } },
+          { verificationStatus: null },
+          { verificationStatus: "pending" }
         ];
+      } else if (verified === "rejected") {
+        where.verified = false;
+        where.verificationStatus = "rejected";
       } else if (verified === "pending") {
         where.verified = false;
-        where.verificationStatus = { not: "rejected" };
+        where.OR = [
+          { verificationStatus: null },
+          { verificationStatus: "pending" }
+        ];
         where.rejectionReason = null;
       }
     }
@@ -138,21 +145,22 @@ class AdminService {
       throw new ApiError(404, "Vendor not found");
     }
 
-    // Prepare update data
+    // Prepare update data with enhanced verification status handling
     const updateData = {
       verified,
-      verificationStatus: verified ? "verified" : "rejected",
       updatedAt: new Date(),
     };
 
-    // Handle rejection
-    if (!verified) {
-      updateData.rejectionReason = rejectionReason || null;
-      updateData.rejectedAt = new Date();
+    // Handle verification approval
+    if (verified) {
+      updateData.verificationStatus = "verified";
+      updateData.rejectionReason = null; // Clear any previous rejection reason
+      updateData.rejectedAt = null; // Clear rejection timestamp
     } else {
-      // Clear rejection data when approving
-      updateData.rejectionReason = null;
-      updateData.rejectedAt = null;
+      // Handle rejection
+      updateData.verificationStatus = "rejected";
+      updateData.rejectionReason = rejectionReason || "No reason provided";
+      updateData.rejectedAt = new Date();
     }
 
     const updatedVendor = await prisma.vendor.update({
@@ -232,7 +240,6 @@ class AdminService {
         now.getMonth() - 1,
         1
       );
-      const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
 
       const [
         // Current totals
@@ -251,8 +258,10 @@ class AdminService {
         inquiriesThisMonth,
         inquiriesLastMonth,
 
-        // Additional metrics
+        // Additional metrics with new verification statuses
         verifiedVendors,
+        rejectedVendors,
+        pendingVendors,
         activeProducts,
         inquiriesResponseRate,
       ] = await Promise.all([
@@ -280,8 +289,28 @@ class AdminService {
           where: { createdAt: { gte: startOfLastMonth, lt: startOfMonth } },
         }),
 
-        // Additional metrics
-        prisma.vendor.count({ where: { verified: true } }),
+        // Enhanced verification metrics
+        prisma.vendor.count({ 
+          where: { 
+            verified: true,
+            verificationStatus: "verified" 
+          } 
+        }),
+        prisma.vendor.count({ 
+          where: { 
+            verified: false,
+            verificationStatus: "rejected" 
+          } 
+        }),
+        prisma.vendor.count({ 
+          where: { 
+            verified: false,
+            OR: [
+              { verificationStatus: null },
+              { verificationStatus: "pending" }
+            ]
+          } 
+        }),
         prisma.product.count({ where: { isActive: true, stock: { gt: 0 } } }),
         prisma.inquiry.count({
           where: {
@@ -296,7 +325,7 @@ class AdminService {
         return Math.round(((current - previous) / previous) * 100);
       };
 
-      // Calculate platform health
+      // Calculate platform health with enhanced verification metrics
       const verificationRate =
         totalVendors > 0
           ? Math.round((verifiedVendors / totalVendors) * 100)
@@ -339,6 +368,9 @@ class AdminService {
           thisMonth: vendorsThisMonth,
           lastMonth: vendorsLastMonth,
           verificationRate,
+          verified: verifiedVendors,
+          rejected: rejectedVendors,
+          pending: pendingVendors,
         },
         totalProducts: {
           value: totalProducts,
@@ -369,7 +401,7 @@ class AdminService {
   }
 
   /**
-   * Get Activity Metrics (Pending Verifications, Open Inquiries, Active Products, Verification Rate)
+   * Get Activity Metrics with enhanced verification status tracking
    */
   async getActivityMetrics() {
     try {
@@ -377,6 +409,7 @@ class AdminService {
 
       const [
         pendingVerifications,
+        rejectedVendors,
         openInquiries,
         activeProducts,
         outOfStockProducts,
@@ -386,12 +419,31 @@ class AdminService {
         respondedInquiries,
         closedInquiries,
       ] = await Promise.all([
-        prisma.vendor.count({ where: { verified: false } }),
+        prisma.vendor.count({ 
+          where: { 
+            verified: false,
+            OR: [
+              { verificationStatus: null },
+              { verificationStatus: "pending" }
+            ]
+          } 
+        }),
+        prisma.vendor.count({ 
+          where: { 
+            verified: false,
+            verificationStatus: "rejected" 
+          } 
+        }),
         prisma.inquiry.count({ where: { status: "OPEN" } }),
         prisma.product.count({ where: { isActive: true, stock: { gt: 0 } } }),
         prisma.product.count({ where: { isActive: true, stock: 0 } }),
         prisma.vendor.count(),
-        prisma.vendor.count({ where: { verified: true } }),
+        prisma.vendor.count({ 
+          where: { 
+            verified: true,
+            verificationStatus: "verified" 
+          } 
+        }),
         prisma.inquiry.count(),
         prisma.inquiry.count({ where: { status: "RESPONDED" } }),
         prisma.inquiry.count({ where: { status: "CLOSED" } }),
@@ -418,6 +470,10 @@ class AdminService {
               ? "medium"
               : "low",
         },
+        rejectedVendors: {
+          value: rejectedVendors,
+          priority: rejectedVendors > 5 ? "high" : rejectedVendors > 2 ? "medium" : "low",
+        },
         openInquiries: {
           value: openInquiries,
           priority:
@@ -432,6 +488,7 @@ class AdminService {
           value: verificationRate,
           verified: verifiedVendors,
           pending: pendingVerifications,
+          rejected: rejectedVendors,
           total: totalVendors,
         },
         inquiryMetrics: {
@@ -453,7 +510,7 @@ class AdminService {
   }
 
   /**
-   * Get Recent Activities (last 10 activities by default)
+   * Get Recent Activities with enhanced verification events
    */
   async getRecentActivities(limit = 10) {
     try {
@@ -465,11 +522,12 @@ class AdminService {
         recentProducts,
         recentInquiries,
         recentVerifications,
+        recentRejections,
       ] = await Promise.all([
         // Recent user registrations
         prisma.user.findMany({
           orderBy: { createdAt: "desc" },
-          take: Math.ceil(limit / 5),
+          take: Math.ceil(limit / 6),
           select: {
             id: true,
             firstName: true,
@@ -483,7 +541,7 @@ class AdminService {
         // Recent vendor registrations
         prisma.vendor.findMany({
           orderBy: { createdAt: "desc" },
-          take: Math.ceil(limit / 5),
+          take: Math.ceil(limit / 6),
           include: {
             user: {
               select: {
@@ -499,7 +557,7 @@ class AdminService {
         prisma.product.findMany({
           where: { isActive: true },
           orderBy: { createdAt: "desc" },
-          take: Math.ceil(limit / 5),
+          take: Math.ceil(limit / 6),
           include: {
             vendor: {
               include: {
@@ -517,7 +575,7 @@ class AdminService {
         // Recent inquiries
         prisma.inquiry.findMany({
           orderBy: { createdAt: "desc" },
-          take: Math.ceil(limit / 5),
+          take: Math.ceil(limit / 6),
           include: {
             buyer: {
               select: {
@@ -543,12 +601,34 @@ class AdminService {
         prisma.vendor.findMany({
           where: {
             verified: true,
+            verificationStatus: "verified",
             updatedAt: {
               gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
             },
           },
           orderBy: { updatedAt: "desc" },
-          take: Math.ceil(limit / 5),
+          take: Math.ceil(limit / 6),
+          include: {
+            user: {
+              select: {
+                firstName: true,
+                lastName: true,
+              },
+            },
+          },
+        }),
+
+        // Recent rejections (updated in last 7 days)
+        prisma.vendor.findMany({
+          where: {
+            verified: false,
+            verificationStatus: "rejected",
+            rejectedAt: {
+              gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+            },
+          },
+          orderBy: { rejectedAt: "desc" },
+          take: Math.ceil(limit / 6),
           include: {
             user: {
               select: {
@@ -632,6 +712,19 @@ class AdminService {
         });
       });
 
+      // Add rejections
+      recentRejections.forEach((vendor) => {
+        activities.push({
+          id: `rejection-${vendor.id}`,
+          type: "vendor_rejected",
+          title: "Vendor Rejected",
+          description: `${vendor.user.firstName} ${vendor.user.lastName} verification was rejected`,
+          timestamp: vendor.rejectedAt,
+          icon: "x-circle",
+          priority: "high",
+        });
+      });
+
       // Sort by timestamp and return top activities
       const sortedActivities = activities
         .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
@@ -668,7 +761,6 @@ class AdminService {
 
     // Build where clause
     const where = {};
-    const userWhere = {};
 
     // Search filter
     if (search && search.trim()) {
@@ -712,7 +804,7 @@ class AdminService {
       where.vendorType = vendorType.toUpperCase();
     }
 
-    // Verification status filter
+    // Enhanced verification status filter
     if (
       verificationStatus &&
       verificationStatus !== "all" &&
@@ -720,16 +812,33 @@ class AdminService {
     ) {
       switch (verificationStatus) {
         case "gst_verified":
-          where.AND = [{ verified: true }, { verificationType: "gst" }];
+          where.AND = [
+            { verified: true }, 
+            { verificationType: "gst" },
+            { verificationStatus: "verified" }
+          ];
           break;
         case "manually_verified":
-          where.AND = [{ verified: true }, { verificationType: "manual" }];
+          where.AND = [
+            { verified: true }, 
+            { verificationType: "manual" },
+            { verificationStatus: "verified" }
+          ];
           break;
         case "pending":
           where.verified = false;
+          where.OR = [
+            { verificationStatus: null },
+            { verificationStatus: "pending" }
+          ];
           break;
         case "verified":
           where.verified = true;
+          where.verificationStatus = "verified";
+          break;
+        case "rejected":
+          where.verified = false;
+          where.verificationStatus = "rejected";
           break;
         case "unverified":
           where.verified = false;
@@ -751,6 +860,12 @@ class AdminService {
         break;
       case "verified":
         orderBy = { verified: sortOrder.toLowerCase() };
+        break;
+      case "verificationStatus":
+        orderBy = { verificationStatus: sortOrder.toLowerCase() };
+        break;
+      case "rejectedAt":
+        orderBy = { rejectedAt: sortOrder.toLowerCase() };
         break;
       case "createdAt":
       default:
@@ -788,7 +903,7 @@ class AdminService {
         prisma.vendor.count({ where }),
       ]);
 
-      // Format the response
+      // Format the response with enhanced rejection information
       const formattedVendors = vendors.map((vendor) => ({
         id: vendor.id,
         userId: vendor.userId,
@@ -818,7 +933,13 @@ class AdminService {
         businessLogo: vendor.businessLogo,
         verified: vendor.verified,
         verificationType: vendor.verificationType,
-        verificationStatus: this.getVerificationStatusLabel(vendor),
+        verificationStatus: vendor.verificationStatus,
+        verificationStatusLabel: this.getVerificationStatusLabel(vendor),
+        rejectionInfo: {
+          isRejected: vendor.verificationStatus === "rejected",
+          rejectionReason: vendor.rejectionReason,
+          rejectedAt: vendor.rejectedAt,
+        },
         verificationDetails: {
           gstNumber: vendor.gstNumber,
           idType: vendor.idType,
@@ -853,7 +974,8 @@ class AdminService {
         summary: {
           totalVendors: total,
           verifiedVendors: formattedVendors.filter((v) => v.verified).length,
-          pendingVendors: formattedVendors.filter((v) => !v.verified).length,
+          pendingVendors: formattedVendors.filter((v) => !v.verified && v.verificationStatus !== "rejected").length,
+          rejectedVendors: formattedVendors.filter((v) => v.verificationStatus === "rejected").length,
         },
       };
     } catch (error) {
@@ -1011,20 +1133,21 @@ class AdminService {
   // ===== HELPER METHODS =====
 
   getVerificationStatusLabel(vendor) {
-    if (vendor.verified) {
+    if (vendor.verified && vendor.verificationStatus === "verified") {
       if (vendor.verificationType === "gst") {
         return "GST Verified";
       } else if (vendor.verificationType === "manual") {
         return "Manually Verified";
       }
       return "Verified";
-    } else if (
-      vendor.verificationStatus === "rejected" ||
-      vendor.rejectionReason
-    ) {
+    } else if (vendor.verificationStatus === "rejected") {
       return "Rejected";
-    } else {
+    } else if (vendor.verificationStatus === "pending") {
       return "Pending Verification";
+    } else if (!vendor.verified && !vendor.verificationStatus) {
+      return "Pending Verification";
+    } else {
+      return "Unknown Status";
     }
   }
 
@@ -1039,7 +1162,7 @@ class AdminService {
           },
         }),
         prisma.vendor.groupBy({
-          by: ["verified", "verificationType"],
+          by: ["verified", "verificationType", "verificationStatus"],
           _count: { verified: true },
         }),
         prisma.vendor.count(),
@@ -1055,6 +1178,7 @@ class AdminService {
         verificationStats: verificationStats.map((item) => ({
           verified: item.verified,
           verificationType: item.verificationType,
+          verificationStatus: item.verificationStatus,
           count: item._count.verified,
           percentage: Math.round((item._count.verified / totalVendors) * 100),
         })),
@@ -1124,6 +1248,7 @@ class AdminService {
         totalInquiries,
         verifiedVendors,
         pendingVendors,
+        rejectedVendors,
         totalBuyers,
         googleUsers,
         activeProducts,
@@ -1133,8 +1258,27 @@ class AdminService {
         prisma.vendor.count(),
         prisma.product.count({ where: { isActive: true } }),
         prisma.inquiry.count(),
-        prisma.vendor.count({ where: { verified: true } }),
-        prisma.vendor.count({ where: { verified: false } }),
+        prisma.vendor.count({ 
+          where: { 
+            verified: true,
+            verificationStatus: "verified" 
+          } 
+        }),
+        prisma.vendor.count({ 
+          where: { 
+            verified: false,
+            OR: [
+              { verificationStatus: null },
+              { verificationStatus: "pending" }
+            ]
+          } 
+        }),
+        prisma.vendor.count({ 
+          where: { 
+            verified: false,
+            verificationStatus: "rejected" 
+          } 
+        }),
         prisma.user.count({ where: { accountType: "BUYER" } }),
         prisma.user.count({ where: { googleId: { not: null } } }),
         prisma.product.count({ where: { isActive: true, stock: { gt: 0 } } }),
@@ -1149,6 +1293,7 @@ class AdminService {
         totalInquiries,
         verifiedVendors,
         pendingVendors,
+        rejectedVendors,
         googleUsers,
         activeProducts,
         openInquiries,

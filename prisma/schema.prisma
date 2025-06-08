@@ -1,5 +1,4 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
+// prisma/schema.prisma - Updated with rejection fields
 
 generator client {
   provider = "prisma-client-js"
@@ -69,7 +68,12 @@ model Vendor {
   
   otherDocuments      String[]    @map("other_documents")
   verified            Boolean     @default(false)
-  verificationStatus  String?     @map("verification_status")
+  
+  // NEW: Rejection handling fields
+  verificationStatus  String?     @map("verification_status") // 'pending', 'verified', 'rejected'
+  rejectionReason     String?     @map("rejection_reason")
+  rejectedAt          DateTime?   @map("rejected_at")
+  
   profileStep         Int         @default(1) @map("profile_step")
   createdAt           DateTime    @default(now()) @map("created_at")
   updatedAt           DateTime    @updatedAt @map("updated_at")

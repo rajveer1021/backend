@@ -1,11 +1,13 @@
-// src/routes/admin.routes.js - Updated with simplified dashboard routes
+// src/routes/admin.routes.js - Updated with rejection handling routes
 
 const express = require('express');
 const adminController = require('../controllers/admin.controller');
 const { protect, isAdmin } = require('../middleware/auth.middleware');
 const validate = require('../middleware/validation.middleware');
 const { 
-  vendorVerificationSchema
+  vendorVerificationSchema,
+  vendorSubmissionQuerySchema,
+  dashboardQuerySchema 
 } = require('../validators/admin.validator');
 
 const router = express.Router();
@@ -33,7 +35,10 @@ router.get('/dashboard/activity-metrics', adminController.getActivityMetrics);
  * Query parameters:
  * - limit: Number of activities to fetch (default: 10)
  */
-router.get('/dashboard/recent-activities', adminController.getRecentActivities);
+router.get('/dashboard/recent-activities', 
+  validate(dashboardQuerySchema), 
+  adminController.getRecentActivities
+);
 
 // ===== CORE ADMIN ROUTES =====
 router.get('/users', adminController.getAllUsers);
@@ -52,7 +57,10 @@ router.get('/vendors', adminController.getVendors);
  * 5. API to list all vendor profiles which are submitted ✅
  * GET /api/admin/vendors/submissions
  */
-router.get('/vendors/submissions', adminController.getVendorSubmissions);
+router.get('/vendors/submissions', 
+  validate(vendorSubmissionQuerySchema), 
+  adminController.getVendorSubmissions
+);
 
 /**
  * GET /api/admin/vendors/stats
@@ -60,16 +68,37 @@ router.get('/vendors/submissions', adminController.getVendorSubmissions);
 router.get('/vendors/stats', adminController.getVendorStats);
 
 /**
+ * NEW: Get vendor rejection statistics
+ * GET /api/admin/vendors/rejection-stats
+ */
+router.get('/vendors/rejection-stats', adminController.getRejectionStats);
+
+/**
  * GET /api/admin/vendors/:vendorId
  */
 router.get('/vendors/:vendorId', adminController.getVendorDetails);
 
 /**
+ * NEW: Get vendor rejection details
+ * GET /api/admin/vendors/:vendorId/rejection-details
+ */
+router.get('/vendors/:vendorId/rejection-details', adminController.getVendorRejectionDetails);
+
+/**
  * 6. API to verify the vendor business profile ✅
  * PUT /api/admin/vendors/:vendorId/verify
- * Body: { verified: boolean }
+ * Body: { verified: boolean, rejectionReason?: string }
  */
-router.put('/vendors/:vendorId/verify', validate(vendorVerificationSchema), adminController.verifyVendor);
+router.put('/vendors/:vendorId/verify', 
+  validate(vendorVerificationSchema), 
+  adminController.verifyVendor
+);
+
+/**
+ * NEW: Clear vendor rejection and allow resubmission
+ * POST /api/admin/vendors/:vendorId/clear-rejection
+ */
+router.post('/vendors/:vendorId/clear-rejection', adminController.clearVendorRejection);
 
 // ===== BUYER MANAGEMENT ROUTES =====
 
