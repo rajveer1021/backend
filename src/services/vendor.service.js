@@ -1,4 +1,4 @@
-// src/services/vendor.service.js - Complete fixed version
+// src/services/vendor.service.js - Updated with rejection handling
 
 const prisma = require('../config/database');
 const ApiError = require('../utils/ApiError');
@@ -86,23 +86,28 @@ class VendorService {
 
   async updateStep3(userId, data, files = {}) {
     try {
-  
       // Clean and validate input data
       const verificationType = String(data.verificationType || '').toLowerCase().trim();
       
       if (!verificationType) {
         throw new ApiError(400, 'Verification type is required');
       }
-  
+
       if (!['gst', 'manual'].includes(verificationType)) {
         throw new ApiError(400, 'Invalid verification type. Must be "gst" or "manual"');
       }
-  
+
       const updateData = {
         verificationType: verificationType,
         profileStep: 3, // Always set to step 3 when updating
+        // Reset verification status when resubmitting after rejection
+        verificationStatus: 'pending',
+        verified: false,
+        // Clear any previous rejection data when resubmitting
+        rejectionReason: null,
+        rejectedAt: null,
       };
-  
+
       if (verificationType === 'gst') {
         // Handle GST verification
         const gstNumber = String(data.gstNumber || '').trim().toUpperCase();
@@ -110,13 +115,13 @@ class VendorService {
         if (!gstNumber) {
           throw new ApiError(400, 'GST number is required for GST verification');
         }
-  
+
         // Validate GST format
         const gstRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
         if (!gstRegex.test(gstNumber)) {
           throw new ApiError(400, 'Invalid GST number format');
         }
-  
+
         updateData.gstNumber = gstNumber;
         // Clear manual verification fields when using GST
         updateData.idType = null;
@@ -125,7 +130,7 @@ class VendorService {
         if (files.gstDocument && files.gstDocument[0]) {
           updateData.gstDocument = files.gstDocument[0].location;
         }
-  
+
       } else if (verificationType === 'manual') {
         // Handle manual verification
         const idType = String(data.idType || '').toLowerCase().trim();
@@ -134,12 +139,12 @@ class VendorService {
         if (!idType || !idNumber) {
           throw new ApiError(400, 'ID type and ID number are required for manual verification');
         }
-  
+
         // Validate ID type
         if (!['aadhaar', 'pan'].includes(idType)) {
           throw new ApiError(400, 'Invalid ID type. Must be "aadhaar" or "pan"');
         }
-  
+
         // Format and validate ID number based on type
         if (idType === 'pan') {
           idNumber = idNumber.toUpperCase();
@@ -154,13 +159,13 @@ class VendorService {
             throw new ApiError(400, 'Invalid Aadhaar format. Should be 12 digits');
           }
         }
-  
+
         updateData.idType = idType;
         updateData.idNumber = idNumber;
         // Clear GST fields when using manual verification
         updateData.gstNumber = null;
         updateData.gstDocument = null;
-  
+
         // Handle document uploads for manual verification
         if (files.otherDocuments && files.otherDocuments.length > 0) {
           updateData.otherDocuments = files.otherDocuments.map(file => file.location);
@@ -171,7 +176,7 @@ class VendorService {
         where: { userId },
         data: updateData,
       });
-  
+
       const completion = checkProfileCompletion(vendor);
         
       return { vendor, completion };
@@ -200,10 +205,45 @@ class VendorService {
         throw new ApiError(404, 'Vendor profile not found');
       }
 
-      return { vendor, completion: checkProfileCompletion(vendor) };
+      // Add rejection information to the profile response
+      const profileData = {
+        vendor: {
+          ...vendor,
+          verificationStatusLabel: this.getVerificationStatusLabel(vendor),
+          rejectionInfo: {
+            isRejected: vendor.verificationStatus === 'rejected',
+            rejectionReason: vendor.rejectionReason,
+            rejectedAt: vendor.rejectedAt,
+            canResubmit: vendor.verificationStatus === 'rejected', // Allow resubmission if rejected
+          },
+        },
+        completion: checkProfileCompletion(vendor),
+      };
+
+      return profileData;
     } catch (error) {
       console.error('❌ Get profile error:', error);
       throw error instanceof ApiError ? error : new ApiError(500, 'Failed to fetch vendor profile');
+    }
+  }
+
+  // Helper method to get verification status label
+  getVerificationStatusLabel(vendor) {
+    if (vendor.verified && vendor.verificationStatus === 'verified') {
+      if (vendor.verificationType === 'gst') {
+        return 'GST Verified';
+      } else if (vendor.verificationType === 'manual') {
+        return 'Manually Verified';
+      }
+      return 'Verified';
+    } else if (vendor.verificationStatus === 'rejected') {
+      return 'Rejected';
+    } else if (vendor.verificationStatus === 'pending') {
+      return 'Pending Verification';
+    } else if (!vendor.verified && !vendor.verificationStatus) {
+      return 'Pending Verification';
+    } else {
+      return 'Unknown Status';
     }
   }
 
@@ -324,6 +364,19 @@ class VendorService {
     try {
       const updateData = { ...data };
 
+      // If vendor is updating their profile after rejection, reset verification status
+      const currentVendor = await prisma.vendor.findUnique({
+        where: { userId },
+        select: { verificationStatus: true }
+      });
+
+      if (currentVendor?.verificationStatus === 'rejected') {
+        updateData.verificationStatus = 'pending';
+        updateData.verified = false;
+        updateData.rejectionReason = null;
+        updateData.rejectedAt = null;
+      }
+
       if (files?.businessLogo) {
         updateData.businessLogo = files.businessLogo[0].location;
       }
@@ -345,6 +398,79 @@ class VendorService {
     } catch (error) {
       console.error('❌ Update profile error:', error);
       throw error instanceof ApiError ? error : new ApiError(500, 'Failed to update profile');
+    }
+  }
+
+  /**
+   * Check if vendor can resubmit after rejection
+   */
+  async canResubmitVerification(userId) {
+    try {
+      const vendor = await prisma.vendor.findUnique({
+        where: { userId },
+        select: {
+          verificationStatus: true,
+          rejectedAt: true,
+        },
+      });
+
+      if (!vendor) {
+        throw new ApiError(404, 'Vendor not found');
+      }
+
+      // Allow resubmission if rejected
+      return {
+        canResubmit: vendor.verificationStatus === 'rejected',
+        isRejected: vendor.verificationStatus === 'rejected',
+        rejectedAt: vendor.rejectedAt,
+      };
+    } catch (error) {
+      console.error('❌ Check resubmit error:', error);
+      throw new ApiError(500, 'Failed to check resubmission status');
+    }
+  }
+
+  /**
+   * Get vendor rejection details
+   */
+  async getRejectionDetails(userId) {
+    try {
+      const vendor = await prisma.vendor.findUnique({
+        where: { userId },
+        select: {
+          id: true,
+          verificationStatus: true,
+          rejectionReason: true,
+          rejectedAt: true,
+          user: {
+            select: {
+              firstName: true,
+              lastName: true,
+              email: true,
+            },
+          },
+        },
+      });
+
+      if (!vendor) {
+        throw new ApiError(404, 'Vendor not found');
+      }
+
+      if (vendor.verificationStatus !== 'rejected') {
+        throw new ApiError(400, 'Vendor is not in rejected status');
+      }
+
+      return {
+        isRejected: true,
+        rejectionReason: vendor.rejectionReason,
+        rejectedAt: vendor.rejectedAt,
+        canResubmit: true,
+        vendorName: `${vendor.user.firstName} ${vendor.user.lastName}`.trim(),
+        vendorEmail: vendor.user.email,
+      };
+    } catch (error) {
+      console.error('❌ Get rejection details error:', error);
+      throw error instanceof ApiError ? error : new ApiError(500, 'Failed to get rejection details');
     }
   }
 }

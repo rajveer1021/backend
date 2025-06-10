@@ -27,4 +27,14 @@ router.post('/change-password', validate(changePasswordSchema), authController.c
 router.get('/profile', authController.getProfile);
 router.put('/profile', validate(updateProfileSchema), authController.updateProfile);
 
+router.get('/check-admin', protect, (req, res) => {
+  res.status(200).json({
+    success: true,
+    data: {
+      isAdmin: req.user.accountType === 'ADMIN',
+      accountType: req.user.accountType
+    }
+  });
+});
+
 module.exports = router;
