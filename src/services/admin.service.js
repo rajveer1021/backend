@@ -48,8 +48,18 @@ class AdminService {
 
   async getVendorSubmissions(page = 1, limit = 10, verified) {
     const skip = (page - 1) * limit;
+<<<<<<< Updated upstream
     
     const where = {};
+=======
+
+    const where = {
+      profileStep: 3,
+      verificationType: 'manual' // Only vendors who completed all steps
+    };
+
+    // Enhanced filtering by verification status
+>>>>>>> Stashed changes
     if (verified !== undefined) {
       where.verified = verified === 'true';
     }

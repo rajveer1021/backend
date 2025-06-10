@@ -1,6 +1,11 @@
 const vendorService = require('../services/vendor.service');
 const asyncHandler = require('../utils/asyncHandler');
 const ApiResponse = require('../utils/ApiResponse');
+<<<<<<< Updated upstream
+=======
+const ApiError = require('../utils/ApiError');
+const prisma = require("../config/database");
+>>>>>>> Stashed changes
 
 class VendorController {
   updateStep1 = asyncHandler(async (req, res) => {
